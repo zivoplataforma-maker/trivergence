@@ -1,0 +1,16 @@
+packages:
+  - apps/*
+  - packages/*
+
+minimumReleaseAge: 1440
+
+allowBuilds:
+  electron: true
+  electron-winstaller: false
+  esbuild: true
+
+patchedDependencies:
+  source-map@0.6.1: patches/source-map@0.6.1.patch
+
+overrides:
+  "nanoid@<3.3.18": 3.3.18

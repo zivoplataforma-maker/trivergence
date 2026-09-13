@@ -1,0 +1,30 @@
+{
+  "name": "@trivergence/memory",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --root . src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@trivergence/contracts": "workspace:*",
+    "@trivergence/coordination-contracts": "workspace:*",
+    "@trivergence/orchestration-engine": "workspace:*",
+    "@trivergence/persistence": "workspace:*",
+    "@trivergence/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@trivergence/policy-engine": "workspace:*",
+    "@types/node": "26.1.2",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}

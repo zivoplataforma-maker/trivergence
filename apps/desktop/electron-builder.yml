@@ -1,0 +1,38 @@
+appId: dev.trivergence.desktop
+productName: Trivergence
+extraMetadata:
+  name: trivergence
+asar: true
+compression: maximum
+forceCodeSigning: false
+directories:
+  output: ../../artifacts/windows
+files:
+  - dist/**/*
+  - package.json
+  - "!dist/**/*.map"
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: false
+  grantFileProtocolExtraPrivileges: false
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Trivergence-${version}-windows-x64-UNSIGNED.${ext}
+  verifyUpdateCodeSignature: true
+nsis:
+  oneClick: true
+  perMachine: false
+  allowElevation: false
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Trivergence
+publish: null

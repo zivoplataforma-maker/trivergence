@@ -1,0 +1,40 @@
+{
+  "name": "trivergence",
+  "version": "0.7.0",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "build:fresh": "pnpm -r --workspace-concurrency=4 --if-present build",
+    "check": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && pnpm test",
+    "check:fresh": "pnpm format:check && pnpm lint && pnpm build:fresh && pnpm typecheck:fresh && pnpm test:fresh",
+    "e2e:desktop": "pnpm --filter @trivergence/desktop e2e",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "package:win": "pnpm build && pnpm --filter @trivergence/desktop package:win",
+    "package:win:repro": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/windows/verify-reproducible-package.ps1",
+    "release:manifest": "node tools/release/create-artifact-manifest.mjs",
+    "release:verify": "node tools/release/verify-windows-artifacts.mjs",
+    "sbom:generate": "node tools/release/generate-sbom.mjs",
+    "sbom:verify": "node tools/release/verify-sbom.mjs",
+    "security": "pnpm audit --audit-level high && pnpm sbom:verify",
+    "smoke:desktop": "pnpm --filter @trivergence/desktop smoke",
+    "test": "turbo run test",
+    "test:fresh": "pnpm -r --workspace-concurrency=4 --if-present test",
+    "typecheck": "turbo run typecheck",
+    "typecheck:fresh": "pnpm -r --workspace-concurrency=4 --if-present typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.1.2",
+    "eslint": "10.8.0",
+    "prettier": "3.9.6",
+    "turbo": "2.10.8",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0"
+  }
+}

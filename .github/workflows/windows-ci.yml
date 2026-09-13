@@ -1,0 +1,35 @@
+name: Windows fresh gates
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  p0:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Prepare pinned pnpm
+        run: npm install --global pnpm@11.19.0
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format, lint, types, tests and build without Turbo cache
+        run: pnpm check:fresh
+      - name: Electron end-to-end
+        run: pnpm e2e:desktop
+      - name: Electron smoke
+        run: pnpm smoke:desktop
+      - name: Supply-chain security and SBOM
+        run: |
+          pnpm sbom:generate
+          pnpm security
