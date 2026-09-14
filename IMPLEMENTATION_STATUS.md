@@ -1,6 +1,6 @@
 # Estado de implementación
 
-Última actualización: 2026-09-12
+Última actualización: 2026-09-14
 
 Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 `PLANNED` no iniciado, `BLOCKED` requiere una decisión o dependencia externa.
@@ -15,6 +15,33 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 | M5 — primer conector                | PARTIAL | Contrato/Reference Provider local verificados; ningún proveedor externo superó aún su gate.                        |
 | M6 — workflows, agentes y memoria   | DONE    | Pipeline local de cinco pasos, budgets, provenance, memoria, evaluación, auditoría, E2E y build verificados.       |
 | M7 — hardening/distribución Windows | PARTIAL | Controles y paquete unsigned verificados localmente; faltan reproducibilidad NSIS, firma y matriz limpia Win10/11. |
+
+## Orchestration Space y preparación de proveedores (2026-09-14)
+
+Estado: interfaz y configuración local `DONE`; conexión y ejecución externa
+siguen `PARTIAL` dentro de M5. Ninguna evidencia de este cambio cierra M7.
+
+- Rediseño de navegación, superficie objetivo primero, resumen de sesión y
+  sección separada Proveedores. Los detalles técnicos de la carpeta siguen
+  disponibles bajo desplegable. La vista de Proveedores distingue instalación,
+  autenticación, gate, ejecución y bloqueo con razones explícitas.
+- Preferencias locales versionadas y validadas: proveedor preferido, dirección
+  loopback y nombre de modelo Ollama. No hay campos de key/token/password, login
+  ni conexión de red. Guardar no altera el Registry, AdapterHost, Strategy
+  Engine ni las attestations. La preferencia todavía no enruta ejecuciones.
+- Archivo de preferencias con límite, rechazo de campos desconocidos, temporal
+  exclusivo y rename; corrupción preservada en modo solo lectura. Modelos cloud
+  de Ollama no se ejecutan. APIs con key quedan como extensión futura aislada.
+- Evidencia local fresca: `pnpm check:fresh` pasa con formato, lint,
+  compilación, typecheck y **138 tests**. En el sandbox, la prueba de
+  terminación de árbol Windows falla por restricciones del entorno; fuera del
+  sandbox pasa. `pnpm e2e:desktop` pasa el workflow completo y el
+  guardado/rechazo de gate falsificado. axe WCAG AA y zoom 200 % pasan en ambas
+  vistas. También pasan `pnpm smoke:desktop`, `pnpm sbom:generate` y
+  `pnpm security`; npm no informa vulnerabilidades conocidas y el SBOM
+  verificado contiene 451 componentes.
+- Detalle de diseño, límites y amenaza: `docs/design/orchestration-space.md` y
+  `docs/architecture/provider-configuration.md`.
 
 ## Entorno de descubrimiento
 

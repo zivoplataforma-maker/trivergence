@@ -4,6 +4,18 @@ El roadmap usa puertas de evidencia, no porcentajes subjetivos. El orden refleja
 que Trivergence es un sistema de orquestación: primero decide y explica; después
 ejecuta y conecta subsistemas.
 
+## Preparación de proveedores sin API keys (2026-09-14)
+
+Interfaz y preferencias locales terminadas y verificadas. Los cuatro candidatos
+se muestran bloqueados con estado separado de instalación, autenticación, gate y
+ejecución. Ollama local permite guardar únicamente loopback/modelo; todavía no
+se conecta ni se habilita. El siguiente trabajo de M5 sigue siendo gate oficial
+individual, autenticación autorizada, adaptador por ProviderHost y verificación
+E2E antes de ejecutar cualquier proveedor. Las APIs con key y facturación
+independiente se mantienen como extensión futura fuera del flujo principal.
+
+M5 y M7 continúan `PARTIAL`; el rediseño no cambia esos hitos.
+
 ## P0 transversal hacia v1.0 (sin avance de M7)
 
 Estado: `PARTIAL` hasta completar la auditoría fresca y observar el workflow

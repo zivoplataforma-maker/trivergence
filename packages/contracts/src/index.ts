@@ -1211,6 +1211,8 @@ export type WorkspaceHistoryResponse = z.infer<
 >;
 
 export const ipcChannels = {
+  providerConfigurationGet: "providers:configuration:get",
+  providerConfigurationSave: "providers:configuration:save",
   diagnosticsGet: "diagnostics:get",
   policyEvaluate: "policy:evaluate",
   orchestrationPreview: "orchestration:preview",
@@ -1223,3 +1225,5 @@ export const ipcChannels = {
   workspaceApprovalRequest: "workspace:approval:request",
   workspaceApprovalDecide: "workspace:approval:decide",
 } as const;
+
+export * from "./provider-configuration.js";

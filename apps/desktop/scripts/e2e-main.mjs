@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -326,6 +327,49 @@ app.on("browser-window-created", (_event, window) => {
       }
 
       await window.webContents.executeJavaScript(axeSource);
+      const providerCheck = await window.webContents.executeJavaScript(`
+        (async () => {
+          document.querySelector('nav a[href="#proveedores"]').click();
+          for (let attempt = 0; attempt < 100 && !document.querySelector('#preferred-provider'); attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 60));
+          }
+          const cards = document.querySelectorAll('[data-provider-id]');
+          if (cards.length !== 4) throw new Error('Missing provider configuration cards');
+          if (document.querySelector('input[type="password"]')) throw new Error('Credential input present');
+          const select = document.querySelector('#preferred-provider');
+          Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'ollama');
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          await new Promise(resolve => setTimeout(resolve, 50));
+          document.querySelector('#proveedores form').requestSubmit();
+          for (let attempt = 0; attempt < 100 && !document.querySelector('.saveNotice'); attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 60));
+          }
+          if (!document.querySelector('.saveNotice')) throw new Error('Preferences were not saved');
+          const saved = await window.trivergence.getProviderConfiguration();
+          if (saved.preferences.preferredProviderId !== 'ollama') throw new Error('Preferences not persisted');
+          if (saved.providers.some(provider => provider.executionEnabled || !provider.blocked || provider.gate !== 'pending')) throw new Error('Gate bypass');
+          let rejected = false;
+          try { await window.trivergence.saveProviderConfiguration({ ...saved.preferences, executionEnabled: true }); } catch { rejected = true; }
+          if (!rejected) throw new Error('IPC accepted forged authority');
+          return true;
+        })()
+      `);
+      if (!providerCheck) throw new Error("Provider settings E2E failed");
+      const screenshotDirectory = path.resolve(
+        applicationRoot,
+        "../../artifacts",
+      );
+      mkdirSync(screenshotDirectory, { recursive: true });
+      window.showInactive();
+      await window.webContents.executeJavaScript(
+        "document.documentElement.style.scrollBehavior = 'auto'; window.scrollTo(0, 0)",
+      );
+      window.webContents.invalidate();
+      await delay(400);
+      writeFileSync(
+        path.join(screenshotDirectory, "ui-providers.png"),
+        (await window.webContents.capturePage()).toPNG(),
+      );
       const violations = await window.webContents.executeJavaScript(`
         window.axe.run(document, {
           runOnly: {
@@ -353,10 +397,37 @@ app.on("browser-window-created", (_event, window) => {
         );
       }
 
+      window.webContents.setZoomFactor(1);
+      await window.webContents.executeJavaScript(
+        `document.querySelector('nav a[href="#orquestacion"]').click(); window.scrollTo(0, 0);`,
+      );
+      window.webContents.invalidate();
+      await delay(400);
+      writeFileSync(
+        path.join(screenshotDirectory, "ui-orchestration.png"),
+        (await window.webContents.capturePage()).toPNG(),
+      );
+      const workbenchViolations = await window.webContents.executeJavaScript(
+        `window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } }).then(result => result.violations.map(item => item.id))`,
+      );
+      if (workbenchViolations.length)
+        throw new Error(
+          "Workbench accessibility: " + workbenchViolations.join(", "),
+        );
+      window.webContents.setZoomFactor(2);
+      await delay(100);
+      if (
+        await window.webContents.executeJavaScript(
+          "document.documentElement.scrollWidth > document.documentElement.clientWidth + 1",
+        )
+      )
+        throw new Error("Workbench overflow at 200%");
+      window.hide();
+
       finished = true;
       clearTimeout(timeout);
       process.stdout.write(
-        "Electron workspace, Reference Provider and M6 workflow E2E passed.\n",
+        "Electron workspace, Reference Provider, M6 workflow and provider configuration E2E passed.\n",
       );
       app.quit();
     } catch (error) {

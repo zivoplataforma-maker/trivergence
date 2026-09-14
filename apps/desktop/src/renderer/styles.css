@@ -1,4 +1,12 @@
 :root {
+  --canvas: #141517;
+  --surface: #1b1c20;
+  --surface-raised: #23252a;
+  --border: #393c43;
+  --text: #f0f1f3;
+  --muted: #b0b4be;
+  --accent: #c5b8ff;
+  --radius: 16px;
   color-scheme: dark;
   font-family:
     Inter,
@@ -8,8 +16,8 @@
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: #0b1017;
-  color: #eef3f8;
+  background: var(--canvas);
+  color: var(--text);
   font-synthesis: none;
 }
 
@@ -19,7 +27,7 @@
 
 html {
   min-width: 0;
-  background: #0b1017;
+  background: var(--canvas);
   scroll-behavior: smooth;
 }
 
@@ -74,12 +82,16 @@ a:focus-visible,
 }
 
 .navigation {
-  border-right: 1px solid #33465d;
-  background: #0e151f;
+  border-right: 1px solid var(--border);
+  background: #101113;
   padding: 24px 16px;
   display: flex;
   flex-direction: column;
   gap: 32px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .brand {
@@ -96,9 +108,14 @@ a:focus-visible,
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  background: #73daca;
+  background: var(--accent);
   color: #07100f;
   font-weight: 800;
+}
+
+.brandMark svg {
+  width: 26px;
+  height: 26px;
 }
 
 nav {
@@ -117,13 +134,13 @@ nav {
 }
 
 .navItem:hover {
-  background: #182331;
+  background: var(--surface-raised);
 }
 
 .navItem.active {
   color: #ffffff;
-  background: #182331;
-  box-shadow: inset 3px 0 #73daca;
+  background: var(--surface-raised);
+  box-shadow: inset 3px 0 var(--accent);
 }
 
 .privacyPill {
@@ -138,8 +155,8 @@ nav {
 
 .content {
   min-width: 0;
-  padding: 42px clamp(20px, 4vw, 64px) 56px;
-  max-width: 1440px;
+  padding: 40px clamp(20px, 3vw, 48px) 56px;
+  max-width: 1800px;
   width: 100%;
 }
 
@@ -160,7 +177,7 @@ nav {
 }
 
 .eyebrow {
-  color: #81e6d9;
+  color: var(--accent);
   font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.12em;
@@ -195,7 +212,7 @@ h3 {
 
 .subtitle,
 .panel p {
-  color: #b8c7d7;
+  color: var(--muted);
   line-height: 1.6;
 }
 
@@ -244,12 +261,12 @@ h3 {
 
 .panel {
   min-width: 0;
-  background: #111a25;
-  border: 1px solid #33465d;
-  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: clamp(18px, 3vw, 24px);
   margin-top: 18px;
-  box-shadow: 0 20px 60px rgb(0 0 0 / 16%);
+  box-shadow: none;
 }
 
 .panelHeader p,
@@ -292,6 +309,16 @@ h3 {
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
   margin: 0;
+}
+
+.workspaceDetails {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+
+.workspaceDetails .workspaceMeta {
+  margin-top: 8px;
 }
 
 .workspaceMeta div,
@@ -354,7 +381,7 @@ textarea {
   border-radius: 9px;
   padding: 10px 12px;
   color: #f4f8fc;
-  background: #0b121b;
+  background: var(--canvas);
 }
 
 textarea {
@@ -376,13 +403,13 @@ button {
   border-radius: 9px;
   padding: 9px 16px;
   color: #07100f;
-  background: #73daca;
+  background: var(--accent);
   font-weight: 750;
   cursor: pointer;
 }
 
 button:hover:not(:disabled) {
-  background: #9ff3e5;
+  background: #ded6ff;
 }
 
 button:disabled {
@@ -392,7 +419,7 @@ button:disabled {
 
 .secondaryButton {
   color: #e8f0f8;
-  background: #1b2a3a;
+  background: var(--surface-raised);
   border-color: #50657e;
 }
 
@@ -647,6 +674,8 @@ summary {
   }
 
   .navigation {
+    position: static;
+    height: auto;
     border-right: 0;
     border-bottom: 1px solid #33465d;
     padding: 16px;
@@ -678,6 +707,170 @@ summary {
   .technicalDetails dl,
   .approvalReview dl {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.brandCaption {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.navIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  margin-right: 10px;
+  font-size: 20px;
+  color: var(--accent);
+}
+.workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+}
+.workbenchMain {
+  min-width: 0;
+}
+.contextRail {
+  border-left: 1px solid var(--border);
+  padding-left: 24px;
+  min-width: 0;
+}
+.contextRail h2 {
+  font-size: 18px;
+}
+.journey {
+  padding-left: 24px;
+  margin: 32px 0;
+}
+.journey li {
+  padding: 0 0 24px 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+.journey li::marker {
+  color: var(--accent);
+}
+.journey span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+  font-weight: 400;
+  margin-top: 6px;
+}
+.railFooter {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  font-size: 13px;
+}
+.railFooter a {
+  display: inline-block;
+  min-height: 44px;
+  padding-top: 10px;
+  color: var(--accent);
+}
+.connectionNotice {
+  padding: 20px 24px;
+  border: 1px solid #665a88;
+  border-radius: var(--radius);
+  background: #262231;
+  margin-bottom: 28px;
+}
+.connectionNotice p {
+  color: var(--muted);
+  margin: 8px 0 0;
+  line-height: 1.6;
+}
+.providerSettingsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.connectionCard {
+  min-width: 0;
+  padding: 24px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.connectionCard p,
+.connectionCard li {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.connectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.connectionHeader h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.connectionHeader .providerInitial {
+  margin: 0;
+  background: #33303f;
+  color: var(--accent);
+}
+.blockedLabel {
+  margin-left: auto;
+  font-size: 11px;
+  color: #f3d6a1;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #3b3020;
+}
+.connectionStates {
+  margin: 20px 0 0;
+}
+.connectionStates > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.connectionStates dt {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.connectionStates dd {
+  font-size: 12px;
+  font-weight: 500;
+}
+.saveNotice {
+  color: #bcf2d4 !important;
+  padding-top: 16px;
+}
+
+@media (min-width: 1350px) {
+  .workbench {
+    grid-template-columns: minmax(0, 1fr) 220px;
+  }
+  .contextRail {
+    position: sticky;
+    top: 40px;
+    align-self: start;
+  }
+}
+@media (max-width: 850px) {
+  .providerSettingsGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .navIcon {
+    display: none;
   }
 }
 

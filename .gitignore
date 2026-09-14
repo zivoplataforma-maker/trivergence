@@ -38,6 +38,8 @@ graphify-out/
 .netrc
 credentials.json
 auth.json
+provider-preferences.json
+provider-preferences.json.*.tmp
 *.local
 *.local.*
 *.tsbuildinfo

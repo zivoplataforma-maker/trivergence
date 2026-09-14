@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 const channels = {
+  providerConfigurationGet: "providers:configuration:get",
+  providerConfigurationSave: "providers:configuration:save",
   diagnosticsGet: "diagnostics:get",
   policyEvaluate: "policy:evaluate",
   orchestrationPreview: "orchestration:preview",
@@ -15,6 +17,12 @@ const channels = {
 } as const;
 
 const api = Object.freeze({
+  getProviderConfiguration(): Promise<unknown> {
+    return ipcRenderer.invoke(channels.providerConfigurationGet);
+  },
+  saveProviderConfiguration(request: unknown): Promise<unknown> {
+    return ipcRenderer.invoke(channels.providerConfigurationSave, request);
+  },
   getDiagnostics(): Promise<unknown> {
     return ipcRenderer.invoke(channels.diagnosticsGet);
   },

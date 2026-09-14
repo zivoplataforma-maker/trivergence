@@ -1,6 +1,8 @@
 declare global {
   interface Window {
     trivergence: {
+      getProviderConfiguration(): Promise<unknown>;
+      saveProviderConfiguration(request: unknown): Promise<unknown>;
       getDiagnostics(): Promise<unknown>;
       evaluatePolicy(request: unknown): Promise<unknown>;
       previewOrchestration(request: unknown): Promise<unknown>;

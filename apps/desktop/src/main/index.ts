@@ -36,6 +36,7 @@ import { evaluatePolicy } from "@trivergence/policy-engine";
 import { openPersistenceWithRecovery } from "@trivergence/persistence";
 
 import { collectDiagnostics } from "./diagnostics.js";
+import { ProviderConfigurationService } from "./provider-configuration.js";
 import {
   isPathInside,
   isTrustedRendererUrl,
@@ -133,6 +134,23 @@ function assertTrustedSender(event: IpcMainInvokeEvent): void {
 function registerIpcHandlers(
   workspaceCoordinator: DesktopWorkspaceCoordinator,
 ): void {
+  const providerConfiguration = new ProviderConfigurationService(
+    app.getPath("userData"),
+  );
+  ipcMain.handle(ipcChannels.providerConfigurationGet, async (event) => {
+    assertTrustedSender(event);
+    const diagnostics = await collectDiagnostics(app.getVersion());
+    return providerConfiguration.snapshot(diagnostics.providers);
+  });
+  ipcMain.handle(
+    ipcChannels.providerConfigurationSave,
+    async (event, payload: unknown) => {
+      assertTrustedSender(event);
+      providerConfiguration.save(payload);
+      const diagnostics = await collectDiagnostics(app.getVersion());
+      return providerConfiguration.snapshot(diagnostics.providers);
+    },
+  );
   ipcMain.handle(ipcChannels.diagnosticsGet, async (event) => {
     assertTrustedSender(event);
     return collectDiagnostics(app.getVersion());

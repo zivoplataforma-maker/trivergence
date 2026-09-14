@@ -1,7 +1,9 @@
 # Preparación para GitHub y CI Windows
 
-El repositorio local usa `main`. No se ha creado ni publicado un remoto. La
-identidad de autor del commit procede de la configuración Git del usuario.
+El repositorio local usa `main` y ya tiene `origin` en GitHub. La versión base
+está publicada; los cambios de interfaz y configuración de proveedores de
+2026-09-14 permanecen locales hasta una autorización posterior para hacer push.
+La identidad de autor del commit procede de la configuración Git del usuario.
 
 ## Contenido versionado
 
@@ -12,19 +14,14 @@ locales, cachés, configuración de asistentes/editores, bases de datos, archivo
 de entorno y material de autenticación/firma. `.gitignore` es la fuente de las
 exclusiones; los archivos locales se conservan en disco.
 
-## Activar la CI cuando se autorice publicar
+## CI Windows en GitHub
 
-1. Crear un repositorio GitHub vacío bajo la cuenta u organización elegida, con
-   la visibilidad acordada. Evitar generar README, licencia o commit remoto
-   inicial para conservar esta historia local.
-2. Añadir su URL como `origin` y publicar `main` con una cuenta autorizada.
-3. Habilitar GitHub Actions y permitir `actions/checkout`, `actions/setup-node`
-   y runners hospedados Windows. La organización necesita cuota/disponibilidad
-   de minutos de Actions y acceso saliente a npm y a la descarga de Electron.
-4. Revisar la ejecución `Windows fresh gates`, job `p0`. También se puede
-   iniciar desde `workflow_dispatch` una vez publicado el workflow.
-5. Después del primer éxito, configurar protección de `main` con el check `p0`
-   requerido, según las opciones disponibles para esa cuenta/repositorio.
+El workflow `Windows fresh gates` está versionado. Al publicar un commit nuevo
+en `origin/main`, GitHub ejecutará el job `p0`; también puede iniciarse desde
+`workflow_dispatch`. Hasta entonces, la verificación de estos cambios es local.
+La organización necesita runners Windows disponibles, cuota de Actions y acceso
+saliente a npm y a la descarga de Electron. La protección de `main` con el check
+`p0` queda sujeta a la configuración disponible de la cuenta/repositorio.
 
 El workflow instala Node 24 y pnpm 11.19.0, usa el lockfile congelado y ejecuta
 formato, lint, tipos, tests y build sin Turbo cache, E2E y smoke de Electron,
