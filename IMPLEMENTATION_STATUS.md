@@ -18,8 +18,11 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 
 ## P1 transversal hacia v1.0 (2026-09-14)
 
-Estado: controles implementados y gates locales frescos `PASS`; la CI Windows
-del commit P1 debe observarse después del push. M5 y M7 siguen `PARTIAL`.
+Estado: `DONE` para el alcance P1 descrito aquí. Gates locales frescos `PASS` y
+CI Windows del commit `cf2146fb329d3cd06ca57994fbd9fd9c77ea14ff`
+[run 34903034199](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34903034199)
+`success`: instalación limpia, check sin Turbo cache, E2E, smoke y seguridad. M5
+y M7 siguen `PARTIAL`.
 
 - Historial persistido y eventos de auditoría consultables por workspace desde
   la UI, con estado visible de la cadena y exportación JSON.

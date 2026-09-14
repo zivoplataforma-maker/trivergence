@@ -18,6 +18,9 @@ M5 y M7 continúan `PARTIAL`; el rediseño no cambia esos hitos.
 
 ## P1 transversal hacia v1.0 (sin nuevas funciones grandes)
 
+Estado: `DONE` para estos controles tras los gates locales y la
+[CI Windows 34903034199](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34903034199).
+
 Historial y auditoría por workspace, recuperación visible desde el arranque,
 privacidad local con memoria privada temporal, retención/borrado/exportación,
 descripción precisa del journal, versión única y licencia/notices del proyecto
