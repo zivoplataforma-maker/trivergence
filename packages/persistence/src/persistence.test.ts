@@ -132,6 +132,61 @@ afterEach(() => {
 });
 
 describe("PersistenceStore", () => {
+  it("redacts private goals, erases deleted memory and preserves audit on purge", () => {
+    const store = PersistenceStore.open(databasePath(), {
+      clock: () => new Date(NOW),
+    });
+    const workspaceId = "60000000-0000-4000-8000-000000000001";
+    store.persistPreview({
+      ...preview,
+      request: { ...preview.request, workspaceId, privacyMode: "private" },
+    });
+    store.createRun(run);
+    store.appendEvidence(evidence);
+    store.saveMemoryEntry({
+      id: "70000000-0000-4000-8000-000000000001",
+      namespace: "test",
+      subjectDigest: "d".repeat(64),
+      content: "secreto local",
+      contentDigest: "e".repeat(64),
+      provenance: { source: "test" },
+      sourceRunId: run.id,
+      sourcePlanId: preview.plan.id,
+      sourceStepId: "step-1",
+      createdAt: NOW,
+      expiresAt: "2026-09-04T12:00:00.000Z",
+    });
+    expect(store.listExecutionHistory(workspaceId)[0]?.goal).toBe(
+      "[Objetivo privado no conservado]",
+    );
+    expect(store.listWorkspaceAuditEvents(workspaceId).length).toBeGreaterThan(
+      0,
+    );
+    expect(JSON.stringify(store.exportWorkspaceData(workspaceId))).toContain(
+      "secreto local",
+    );
+    const deleted = store.deleteMemoryEntry(
+      "70000000-0000-4000-8000-000000000001",
+      NOW,
+    );
+    expect(deleted.content).toBe("");
+    expect(deleted.provenance).toEqual({});
+    expect(
+      JSON.stringify(store.exportWorkspaceData(workspaceId)),
+    ).not.toContain("secreto local");
+    store.setWorkspaceRetention(workspaceId, 7);
+    expect(store.hasWorkspaceRetention(workspaceId)).toBe(true);
+    expect(store.purgeWorkspaceData(workspaceId)).toBe(1);
+    expect(store.findRun(run.id)).toBeUndefined();
+    expect(store.listExecutionHistory(workspaceId)).toEqual([]);
+    expect(store.verifyAuditChain().valid).toBe(true);
+    expect(
+      store
+        .listWorkspaceAuditEvents(workspaceId)
+        .map((event) => event.eventType),
+    ).toContain("privacy.workspace_data_deleted");
+    store.close();
+  });
   it("persists preview, run and evidence with one valid audit chain", () => {
     const store = PersistenceStore.open(databasePath(), {
       clock: () => new Date(NOW),

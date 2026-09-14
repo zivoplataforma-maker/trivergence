@@ -240,6 +240,37 @@ export const migrations: readonly Migration[] = [
         ON orchestration_requests(workspace_id, created_at DESC);
     `,
   },
+  {
+    version: "0006_privacy_retention",
+    sql: `
+      DROP TRIGGER memory_entries_immutable_content;
+      CREATE TRIGGER memory_entries_immutable_content
+      BEFORE UPDATE OF namespace, subject_digest, content, content_digest,
+        provenance_json, source_run_id, source_plan_id, source_step_id,
+        created_at, expires_at
+      ON memory_entries
+      WHEN NOT (
+        NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+        AND NEW.content = '' AND NEW.provenance_json = '{}'
+        AND NEW.namespace = OLD.namespace
+        AND NEW.subject_digest = OLD.subject_digest
+        AND NEW.content_digest = OLD.content_digest
+        AND NEW.source_run_id = OLD.source_run_id
+        AND NEW.source_plan_id = OLD.source_plan_id
+        AND NEW.source_step_id = OLD.source_step_id
+        AND NEW.created_at = OLD.created_at
+        AND NEW.expires_at = OLD.expires_at
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'memory entry content is immutable');
+      END;
+
+      CREATE TABLE workspace_retention (
+        workspace_id TEXT PRIMARY KEY,
+        days INTEGER NOT NULL CHECK (days BETWEEN 1 AND 365)
+      ) STRICT;
+    `,
+  },
 ];
 
 const checksum = (sql: string) =>

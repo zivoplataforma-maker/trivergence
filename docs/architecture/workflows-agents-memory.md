@@ -116,8 +116,12 @@ propósito; no se replica en logs ni eventos.
 - recall limitado por cantidad, bytes y `expiresAt`;
 - validación del digest de contenido y del schema de provenance en lectura;
 - commit solo si candidato, digest y provenance coinciden;
-- trigger SQL que impide reescribir contenido, provenance o retención;
-- borrado lógico explícito y poda de expirados, ambos auditados sin contenido;
+- trigger SQL que impide reescribir contenido/provenance salvo vaciarlos al
+  borrar;
+- en modo privado, recall omite la base y commit devuelve un resultado temporal
+  sin guardar contenido en `memory_entries`;
+- borrado explícito y poda de expirados vacían contenido/provenance y dejan
+  tombstone y eventos sin contenido;
 - `secure_delete=ON` como defensa local de SQLite; cifrado de base y garantías
   frente a procesos del mismo usuario siguen fuera de M6.
 

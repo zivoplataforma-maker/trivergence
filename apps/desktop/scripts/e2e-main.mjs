@@ -239,10 +239,17 @@ app.on("browser-window-created", (_event, window) => {
             const m6Timeline = document.querySelector(".timeline")
               ?.textContent?.replace(/\\s+/gu, " ").trim();
             await waitFor(
-              () => document.querySelectorAll(".historyList li").length >= 3,
+              () => document.querySelectorAll("#historial > ol.historyList li").length >= 3,
               "Execution history did not show prior runs",
             );
-            const historyCount = document.querySelectorAll(".historyList li").length;
+            await waitFor(
+              () => document.querySelectorAll("[aria-label='Eventos de auditoría'] li").length > 0,
+              "Audit events were not visible",
+            );
+            const historyCount = document.querySelectorAll("#historial > ol.historyList li").length;
+            const auditCount = document.querySelectorAll("[aria-label='Eventos de auditoría'] li").length;
+            const auditVerified = document.querySelector("#historial [role='status']")?.textContent;
+            const retentionVisible = Boolean(document.querySelector("#retentionDays"));
             const privacy = document.querySelector("#privacidad")?.textContent;
 
             resolve({
@@ -257,6 +264,9 @@ app.on("browser-window-created", (_event, window) => {
               m6Output: m6Output.textContent?.trim(),
               m6Timeline,
               historyCount,
+              auditCount,
+              auditVerified,
+              retentionVisible,
               privacy,
               url: location.href,
             });
@@ -319,6 +329,9 @@ app.on("browser-window-created", (_event, window) => {
       }
       if (
         result.historyCount < 3 ||
+        result.auditCount < 1 ||
+        !result.auditVerified?.includes("verificada") ||
+        !result.retentionVisible ||
         !result.privacy?.includes("Ningún proveedor externo")
       ) {
         throw new Error(

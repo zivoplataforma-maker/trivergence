@@ -89,7 +89,7 @@ proveedor.
 
 ## Licencia
 
-La licencia del código original aún no se ha formalizado en el repositorio.
-Apache-2.0 es la opción propuesta, sujeta a revisión de nombre, dependencias y
-notices antes de publicación. No reutilices este borrador como si ya incluyera
-una concesión de licencia.
+El código original de Trivergence se ofrece bajo [Apache-2.0](LICENSE). Consulta
+[NOTICE](NOTICE) y [notices de terceros](THIRD_PARTY_NOTICES.md). La revisión de
+licencias de todas las dependencias empaquetadas sigue siendo un gate de
+distribución M7; esta licencia no cubre marcas ni software de terceros.

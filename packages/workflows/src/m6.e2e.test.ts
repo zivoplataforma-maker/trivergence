@@ -73,6 +73,7 @@ describe("M6 vertical flow", () => {
       id: randomUUID(),
       goal,
       profile: "assistant",
+      privacyMode: "standard",
       workspaceId,
       requestedCapabilities: [coordinationCapabilityIds.workflowEvaluation],
       capabilityInputs: {
@@ -161,6 +162,43 @@ describe("M6 vertical flow", () => {
         .some((event) => event.eventType === "memory.expired_pruned"),
     ).toBe(true);
     expect(sha256(canonicalizeJson(output))).toHaveLength(64);
+
+    const storedBeforePrivate = store
+      .listAuditEvents()
+      .filter((event) => event.eventType === "memory.entry_stored").length;
+    const privatePreview = engine.preview({
+      id: randomUUID(),
+      goal: "Coordinar un equipo privado sin memoria persistente",
+      profile: "assistant",
+      privacyMode: "private",
+      workspaceId,
+      requestedCapabilities: [coordinationCapabilityIds.workflowEvaluation],
+      capabilityInputs: {
+        [coordinationCapabilityIds.workflowEvaluation]: budget,
+      },
+    });
+    store.persistPreview(privatePreview);
+    const privateApprovals: Record<string, string> = {};
+    for (const step of privatePreview.plan.steps.filter(
+      (candidate) => candidate.policy.decision === "require_approval",
+    )) {
+      const approval = runtime.requestApproval(privatePreview, step.id);
+      runtime.decideApproval(approval.id, "grant", "m6-e2e-user");
+      privateApprovals[step.id] = approval.id;
+    }
+    const privateExecution = await runtime.execute(privatePreview, {
+      approvalIds: privateApprovals,
+    });
+    expect(privateExecution.status).toBe("completed");
+    expect(memory.recall(workspaceId, budget).items).toHaveLength(0);
+    expect(
+      store
+        .listAuditEvents()
+        .filter((event) => event.eventType === "memory.entry_stored"),
+    ).toHaveLength(storedBeforePrivate);
+    expect(
+      JSON.stringify(store.exportWorkspaceData(workspaceId)),
+    ).not.toContain("Coordinar un equipo privado sin memoria persistente");
     store.close();
   });
 });

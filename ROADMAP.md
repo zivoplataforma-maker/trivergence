@@ -16,16 +16,27 @@ independiente se mantienen como extensión futura fuera del flujo principal.
 
 M5 y M7 continúan `PARTIAL`; el rediseño no cambia esos hitos.
 
+## P1 transversal hacia v1.0 (sin nuevas funciones grandes)
+
+Historial y auditoría por workspace, recuperación visible desde el arranque,
+privacidad local con memoria privada temporal, retención/borrado/exportación,
+descripción precisa del journal, versión única y licencia/notices del proyecto
+se implementan como controles de la versión actual. La cadena append-only,
+backups, cuarentenas y exportaciones anteriores no se borran automáticamente. La
+revisión completa de notices de dependencias empaquetadas y los gates de
+distribución siguen en M7 `PARTIAL`; ningún proveedor externo se habilita.
+
 ## P0 transversal hacia v1.0 (sin avance de M7)
 
-Estado: `PARTIAL` hasta completar la auditoría fresca y observar el workflow
-Windows sobre un commit. En código local están implementados, en el orden
-acordado: recuperación de gates y diagnóstico Electron/Runtime, rutas por
-objetivo en Strategy, `AdapterHost` único, Evaluation preflight/postflight,
-provider IDs extensibles y UI objetivo primero con historial/recuperación/
-privacidad. Git se inicializó y la CI Windows quedó definida. El Reference
-Provider sigue siendo la única implementación ejecutable. Los gates remotos, la
-distribución M7 y el gate externo M5 son puertas distintas.
+Estado: `DONE` para P0 tras los gates frescos y el run Windows
+[34871238822](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34871238822).
+En código local están implementados, en el orden acordado: recuperación de gates
+y diagnóstico Electron/Runtime, rutas por objetivo en Strategy, `AdapterHost`
+único, Evaluation preflight/postflight, provider IDs extensibles y UI objetivo
+primero con historial/recuperación/ privacidad. Git se inicializó y la CI
+Windows quedó definida. El Reference Provider sigue siendo la única
+implementación ejecutable. Los gates remotos, la distribución M7 y el gate
+externo M5 son puertas distintas.
 
 ## M0 — especificación y riesgos
 
@@ -152,17 +163,19 @@ distribución todavía es incompleta.
 - `PENDING`: Authenticode válido, identidad editorial y custodia de claves;
 - `PENDING`: clean install/upgrade/rollback/uninstall independientes en Windows
   10 y 11, más segunda máquina/runner de build;
-- `PENDING`: licencia/notices y canal autenticado de update aprobados.
+- `PARTIAL`: licencia Apache-2.0 y notices del repositorio presentes; falta
+  revisión de obligaciones de dependencias empaquetadas.
+- `PENDING`: canal autenticado de update aprobado.
 
 El instalador actual se llama deliberadamente `UNSIGNED` y no es distribuible.
 Codex, Claude y Gemini siguen bloqueados; M5 permanece `PARTIAL`.
 
 ## Extensiones posteriores
 
-Conversaciones, FTS5, notas/tareas, exportación, vistas auxiliares, MCP, segundo
-conector, revisión cruzada, WSL2/Docker, documentos y embeddings se entregan
-después de M7 como subsistemas independientes. Paralelismo, consejo, torneo y
-marketplace requieren ADR, budgets y threat model propios.
+Conversaciones, FTS5, notas/tareas, exportación avanzada, vistas auxiliares,
+MCP, segundo conector, revisión cruzada, WSL2/Docker, documentos y embeddings se
+entregan después de M7 como subsistemas independientes. Paralelismo, consejo,
+torneo y marketplace requieren ADR, budgets y threat model propios.
 
 ## Fuera del compromiso actual
 

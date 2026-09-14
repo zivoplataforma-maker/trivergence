@@ -76,7 +76,7 @@ describe("DesktopWorkspaceCoordinator", () => {
     ).toMatchObject([
       {
         runId: started.runId,
-        goal: "Leer el README seleccionado",
+        goal: "[Objetivo privado no conservado]",
         evidenceCount: 1,
       },
     ]);
@@ -93,6 +93,29 @@ describe("DesktopWorkspaceCoordinator", () => {
     expect(JSON.stringify(store.listAuditEvents())).not.toContain(
       "desktop vertical slice",
     );
+    expect(coordinator.persistenceStatus()).toMatchObject({
+      mode: "readwrite",
+      recoveredRuns: 2,
+      auditValid: true,
+    });
+    expect(
+      coordinator.audit({ workspaceId: workspace.id }).events.length,
+    ).toBeGreaterThan(0);
+    expect(coordinator.retention({ workspaceId: workspace.id }).days).toBe(30);
+    expect(
+      coordinator.saveRetention({ workspaceId: workspace.id, days: 7 }),
+    ).toMatchObject({ days: 7, deletedRequests: 0 });
+    expect(
+      coordinator.exportWorkspaceData({ workspaceId: workspace.id })
+        .workspaceId,
+    ).toBe(workspace.id);
+    expect(
+      coordinator.deleteWorkspaceData({ workspaceId: workspace.id }),
+    ).toMatchObject({ status: "deleted", deletedRequests: 1 });
+    expect(coordinator.history({ workspaceId: workspace.id }).entries).toEqual(
+      [],
+    );
+    expect(coordinator.audit({ workspaceId: workspace.id }).valid).toBe(true);
   });
 
   it("rejects traversal and plan references from another session", () => {
@@ -196,6 +219,7 @@ describe("DesktopWorkspaceCoordinator", () => {
       requestId: "10000000-0000-4000-8000-000000000020",
       goal: "Coordinar agentes, workflow, memoria y evaluación local",
       profile: "assistant",
+      privacyMode: "standard",
       detail: "",
       maxAgents: 3,
       maxProviderCalls: 4,

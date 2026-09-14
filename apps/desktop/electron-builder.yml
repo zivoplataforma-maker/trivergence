@@ -11,6 +11,13 @@ files:
   - dist/**/*
   - package.json
   - "!dist/**/*.map"
+extraResources:
+  - from: ../../LICENSE
+    to: LICENSE
+  - from: ../../NOTICE
+    to: NOTICE
+  - from: ../../THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
 electronFuses:
   runAsNode: false
   enableCookieEncryption: true

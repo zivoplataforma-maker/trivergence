@@ -16,6 +16,36 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 | M6 — workflows, agentes y memoria   | DONE    | Pipeline local de cinco pasos, budgets, provenance, memoria, evaluación, auditoría, E2E y build verificados.       |
 | M7 — hardening/distribución Windows | PARTIAL | Controles y paquete unsigned verificados localmente; faltan reproducibilidad NSIS, firma y matriz limpia Win10/11. |
 
+## P1 transversal hacia v1.0 (2026-09-14)
+
+Estado: controles implementados y gates locales frescos `PASS`; la CI Windows
+del commit P1 debe observarse después del push. M5 y M7 siguen `PARTIAL`.
+
+- Historial persistido y eventos de auditoría consultables por workspace desde
+  la UI, con estado visible de la cadena y exportación JSON.
+- Recuperación mostrada al arrancar, incluso antes de elegir carpeta: motivo,
+  archivos, ubicación de cuarentena, modo de la base y ejecuciones huérfanas. Un
+  fallo que impida abrir o preservar la base muestra error modal y cierra.
+- Modo privado no persiste nuevos textos de objetivo ni argumentos de pasos; el
+  workflow no recuerda memoria guardada ni persiste su resultado temporal. El
+  modo estándar conserva la memoria funcional con retención acotada.
+- Retención de 1–365 días solo tras guardarla explícitamente, borrado confirmado
+  de datos activos por workspace y vaciado de contenido/provenance de memoria
+  eliminada o expirada. La cadena append-only, backups y exportaciones no se
+  borran; no se afirma eliminación forense.
+- El journal de archivos M7 se documenta como SHA-256 no autenticado. El número
+  de versión se declara únicamente en `apps/desktop/package.json`; SBOM y
+  verificación de paquete lo leen de esa fuente.
+- Licencia Apache-2.0 y notices del repositorio añadidos al paquete de ensayo.
+  La revisión exhaustiva de dependencias y sus obligaciones sigue en M7.
+- Evidencia local: `pnpm check:fresh` pasó con formato, lint, build/typecheck de
+  12 proyectos y 139 tests; `pnpm e2e:desktop`, `pnpm smoke:desktop`,
+  `pnpm sbom:generate` y `pnpm security` pasaron. No se detectaron
+  vulnerabilidades conocidas; SBOM verificado con 451 componentes.
+- `pnpm package:win` generó el instalador unsigned; en `win-unpacked/resources`
+  se verificó presencia de `LICENSE`, `NOTICE` y `THIRD_PARTY_NOTICES.md`. Esto
+  no satisface firma, reproducibilidad ni licencias transitivas de M7.
+
 ## Orchestration Space y preparación de proveedores (2026-09-14)
 
 Estado: interfaz y configuración local `DONE`; conexión y ejecución externa
@@ -56,8 +86,10 @@ siguen `PARTIAL` dentro de M5. Ninguna evidencia de este cambio cierra M7.
 
 ## P0 de la auditoría v1.0
 
-Estado: `PARTIAL`. Los gates locales ya se repitieron sin caché; falta observar
-la CI Windows en un commit publicado. No implica cierre de M5 ni M7.
+Estado: `DONE` para el alcance P0. Los gates frescos pasaron localmente y la CI
+Windows del commit `bf80d3213895ff080dfc6057f423182abe0909cb` terminó verde
+([run 34871238822](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34871238822)).
+No implica cierre de M5 ni M7.
 
 - `DONE` en código local: Strategy v2 genera/compara/selecciona rutas a partir
   del objetivo y metadatos del Registry; mantiene selección explícita por
@@ -71,8 +103,8 @@ la CI Windows en un commit publicado. No implica cierre de M5 ni M7.
   store externo continúa vacío.
 - `DONE` en código local: UI objetivo primero, rutas comparadas, privacidad,
   historial acotado por workspace, estado de persistencia y recuperación.
-- `DONE` local: `git init -b main` y workflow Windows de gates frescos. No se
-  creó commit ni se ejecutó todavía el workflow remoto.
+- `DONE`: Git en `main`, commit publicado y workflow Windows de gates frescos
+  ejecutado en GitHub Actions.
 - Evidencia final: ver sección de auditoría P0 al final de este documento.
   Electron E2E/smoke y Runtime process-tree necesitan ejecutarse fuera del
   sandbox de Codex; dentro de él Chromium y `taskkill /T` son bloqueados.
@@ -144,14 +176,16 @@ la CI Windows en un commit publicado. No implica cierre de M5 ni M7.
 - Workflows: definición `workflow.local.team-memory-evaluation@1.0.0`, checks
   deterministas y como máximo una reparación usando únicamente budget remanente.
 - Memoria: namespace de workspace, límites de cantidad/bytes, TTL, borrado,
-  poda, contenido/provenance inmutables y eventos de auditoría content-free.
+  poda, contenido/provenance inmutables salvo redacción al borrar y eventos de
+  auditoría content-free.
 - Provenance: digests encadenan contribuciones, equipo, candidato, memoria y
   evaluación; alteración falla antes de persistir o produce rechazo.
 - Runtime: dispatchers solo ven copias profundas e inmutables de outputs de sus
   dependencias directas; un test impide mutación y acceso lateral.
 - Archivos M7: watcher acotado, snapshot de contenido/metadata/digest, rechazo
-  de symlink/hardlink, temp en el mismo volumen, `fsync`, rename, journal
-  autenticado, rollback y recovery que no pisan contenido inesperado.
+  de symlink/hardlink, temp en el mismo volumen, `fsync`, rename, journal con
+  SHA-256 **no autenticado**, rollback y recovery que no pisan contenido
+  inesperado.
 - Persistencia M7: una base ilegible se preserva con SQLite/WAL/SHM y hashes en
   cuarentena antes de crear una base sana; un backup solo se activa tras
   SHA-256, `quick_check` y audit chain válidos, preservando la base desplazada.
@@ -205,9 +239,10 @@ la CI Windows en un commit publicado. No implica cierre de M5 ni M7.
   reprodujeron como restricciones de procesos del entorno; fuera de ese sandbox,
   Runtime 15/15, Electron E2E y smoke pasaron. No se deshabilitó `sandbox: true`
   de Electron ni se incorporó `--no-sandbox` al producto.
-- Git: repositorio inicializado en `main`, sin commit ni remoto. El workflow
-  `.github/workflows/windows-ci.yml` está definido pero **no ejecutado** en
-  GitHub/runner limpio. Por ello el P0 transversal queda `PARTIAL`, no `DONE`.
+- Git: al corte de esta auditoría (2026-09-12) aún no había commit ni remoto.
+  Posteriormente se publicó `bf80d321` y la CI Windows pasó en el run
+  [34871238822](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34871238822),
+  cerrando el alcance P0 sin cambiar M5 ni M7.
 - Gates no cubiertos por este P0: reproducibilidad/firma/VM limpia de M7,
   revisión humana/legal y conector oficial de M5. Ambos hitos permanecen
   `PARTIAL`.

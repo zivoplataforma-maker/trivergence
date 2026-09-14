@@ -3,7 +3,8 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
-$installer = Join-Path $projectRoot 'artifacts\windows\Trivergence-0.7.0-windows-x64-UNSIGNED.exe'
+$desktopPackage = Get-Content -LiteralPath (Join-Path $projectRoot 'apps\desktop\package.json') -Raw | ConvertFrom-Json
+$installer = Join-Path $projectRoot "artifacts\windows\Trivergence-$($desktopPackage.version)-windows-x64-UNSIGNED.exe"
 $asar = Join-Path $projectRoot 'artifacts\windows\win-unpacked\resources\app.asar'
 $env:CI = 'true'
 $env:SOURCE_DATE_EPOCH = '1789084800'

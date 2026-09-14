@@ -102,6 +102,18 @@ describe("MemoryService", () => {
     memory.forget(first.entry.id);
     expect(memory.recall(workspaceId, budget).items).toHaveLength(0);
 
+    const privateResult = memory.commit({
+      namespace: workspaceId,
+      runId: run.id,
+      planId: preview.plan.id,
+      stepId: preview.plan.steps[0]!.id,
+      candidate,
+      budget,
+      persist: false,
+    });
+    expect(privateResult.entry.content).toBe(candidate.candidate);
+    expect(memory.recall(workspaceId, budget).items).toHaveLength(0);
+
     memory.commit({
       namespace: workspaceId,
       runId: run.id,
@@ -110,6 +122,7 @@ describe("MemoryService", () => {
       candidate,
       budget,
     });
+    expect(memory.recall(workspaceId, budget, false).items).toHaveLength(0);
     now = new Date("2026-09-13T12:00:00.000Z");
     expect(memory.pruneExpired()).toBe(1);
     expect(memory.recall(workspaceId, budget).items).toHaveLength(0);

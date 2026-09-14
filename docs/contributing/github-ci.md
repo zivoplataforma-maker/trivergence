@@ -35,6 +35,6 @@ dependencias internas publican sus contratos desde `dist`, que no existe en un
 checkout nuevo. Este orden permite validar sin builds previos del equipo.
 
 Los gates locales de un commit no sustituyen la ejecución observada en el runner
-de GitHub. M5 y M7 conservan sus gates independientes. Antes de publicar el
-código como proyecto público sigue pendiente formalizar licencia/notices; el
-borrador actual no concede una licencia de código abierto.
+de GitHub. M5 y M7 conservan sus gates independientes. La licencia Apache-2.0
+del código original y los notices del repositorio están presentes. La revisión
+de obligaciones de las dependencias empaquetadas sigue pendiente para M7.

@@ -1,0 +1,10 @@
+Trivergence
+Copyright 2026 Trivergence contributors
+
+The original Trivergence source code is licensed under the Apache License,
+Version 2.0. See LICENSE for the complete terms. Trivergence is independent
+from OpenAI, Anthropic, Google and the other providers named in its docs.
+
+Third-party components retain their own licenses and notices. See
+THIRD_PARTY_NOTICES.md and the generated CycloneDX SBOM for the applicable
+dependency inventory. This NOTICE does not grant rights to third-party marks.

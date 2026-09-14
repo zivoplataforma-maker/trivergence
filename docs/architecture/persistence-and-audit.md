@@ -30,8 +30,9 @@ StepEvidence ─────────┘          │
   run/plan/step/capability/adapter/proveedor, con estado `active`/`consumed` y
   unicidad por run/paso;
 - `memory_entries`: memoria funcional por workspace con contenido/digest,
-  provenance, run/plan/step, expiración y borrado lógico; un trigger impide
-  reescribir contenido, provenance o retención;
+  provenance, run/plan/step y expiración; un trigger impide reescrituras salvo
+  vaciar contenido/provenance al marcar borrado;
+- `workspace_retention`: días de retención elegidos explícitamente;
 - `audit_events`: metadatos acotados, secuencia y hashes anterior/actual;
 - `schema_migrations`: versión, checksum y fecha de aplicación.
 
@@ -40,6 +41,13 @@ objetivos, outputs completos, tokens, rutas sensibles ni secretos en esos
 eventos. Los datos funcionales conservan sus límites Zod antes de llegar a SQL.
 Los checkpoints no contienen prompt, contexto ni respuesta; sus eventos de
 auditoría registran únicamente identidad y digests.
+
+En modo privado, las nuevas solicitudes persisten un marcador en vez del
+objetivo y un objeto vacío en vez de los argumentos de cada paso. La ejecución
+usa el plan vivo en memoria. La exportación JSON del workspace incluye sus
+tablas funcionales activas y los eventos vinculados; el borrado físico usa
+`secure_delete` y mantiene intacta la cadena de auditoría. No elimina copias
+externas, backups ni remanencia forense.
 
 La memoria es la excepción funcional deliberada al principio de outputs
 efímeros: su contenido debe persistir para poder ser recordado. Se almacena una

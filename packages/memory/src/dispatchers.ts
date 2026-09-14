@@ -71,6 +71,7 @@ export class MemoryRecallDispatcher implements StepDispatcher {
     const result = this.memory.recall(
       context.request.workspaceId ?? `request:${context.request.id}`,
       budgetFrom(context),
+      context.request.privacyMode === "standard",
     );
     return {
       outcome: "succeeded",
@@ -104,6 +105,7 @@ export class MemoryCommitDispatcher implements StepDispatcher {
       stepId: context.step.id,
       candidate,
       budget: budgetFrom(context),
+      persist: context.request.privacyMode === "standard",
     });
     const parsed = memoryCommitResultSchema.parse(result);
     return {

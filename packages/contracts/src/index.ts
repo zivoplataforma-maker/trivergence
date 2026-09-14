@@ -891,6 +891,8 @@ export const auditEventTypeSchema = z.enum([
   "memory.entry_deleted",
   "memory.expired_pruned",
   "persistence.recovery_entered",
+  "privacy.retention_changed",
+  "privacy.workspace_data_deleted",
 ]);
 export type AuditEventType = z.infer<typeof auditEventTypeSchema>;
 
@@ -943,6 +945,7 @@ export const desktopWorkspaceSchema = z.object({
         incidentId: z.string().uuid(),
         detectedAt: z.iso.datetime(),
         reason: z.string().min(1).max(500),
+        quarantineDirectory: z.string().min(1).max(2_048),
         files: z
           .array(
             z.object({
@@ -957,6 +960,11 @@ export const desktopWorkspaceSchema = z.object({
   }),
 });
 export type DesktopWorkspace = z.infer<typeof desktopWorkspaceSchema>;
+
+export const persistenceStatusResponseSchema =
+  desktopWorkspaceSchema.shape.persistence.extend({
+    recoveredRuns: z.number().int().nonnegative().max(10_000),
+  });
 
 export const workspaceSelectionResponseSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("cancelled") }),
@@ -1210,10 +1218,39 @@ export type WorkspaceHistoryResponse = z.infer<
   typeof workspaceHistoryResponseSchema
 >;
 
+export const workspaceAuditRequestSchema = z.object({
+  workspaceId: z.string().uuid(),
+  limit: z.number().int().min(1).max(100).default(50),
+});
+export const workspaceAuditResponseSchema = z.object({
+  valid: z.boolean(),
+  events: z.array(auditEventSchema).max(100),
+});
+
+export const workspaceRetentionRequestSchema = z.object({
+  workspaceId: z.string().uuid(),
+  days: z.number().int().min(1).max(365),
+});
+export const workspaceRetentionResponseSchema = z.object({
+  days: z.number().int().min(1).max(365),
+  deletedRequests: z.number().int().nonnegative(),
+});
+export const workspaceDataRequestSchema = z.object({
+  workspaceId: z.string().uuid(),
+});
+export const workspaceDataDeleteResponseSchema = z.object({
+  status: z.enum(["deleted", "cancelled"]),
+  deletedRequests: z.number().int().nonnegative(),
+});
+export const workspaceDataExportResponseSchema = z.object({
+  status: z.enum(["saved", "cancelled"]),
+});
+
 export const ipcChannels = {
   providerConfigurationGet: "providers:configuration:get",
   providerConfigurationSave: "providers:configuration:save",
   diagnosticsGet: "diagnostics:get",
+  persistenceStatusGet: "persistence:status:get",
   policyEvaluate: "policy:evaluate",
   orchestrationPreview: "orchestration:preview",
   workspaceSelect: "workspace:select",
@@ -1222,6 +1259,11 @@ export const ipcChannels = {
   workspaceExecutionGet: "workspace:execution:get",
   workspaceExecutionCancel: "workspace:execution:cancel",
   workspaceHistoryGet: "workspace:history:get",
+  workspaceAuditGet: "workspace:audit:get",
+  workspaceRetentionGet: "workspace:retention:get",
+  workspaceRetentionSave: "workspace:retention:save",
+  workspaceDataDelete: "workspace:data:delete",
+  workspaceDataExport: "workspace:data:export",
   workspaceApprovalRequest: "workspace:approval:request",
   workspaceApprovalDecide: "workspace:approval:decide",
 } as const;

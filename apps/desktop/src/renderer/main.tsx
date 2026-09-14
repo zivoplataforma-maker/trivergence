@@ -9,6 +9,11 @@ import {
   workspaceExecutionStartResponseSchema,
   workspaceExecutionStateSchema,
   workspaceHistoryResponseSchema,
+  workspaceAuditResponseSchema,
+  workspaceRetentionResponseSchema,
+  workspaceDataDeleteResponseSchema,
+  workspaceDataExportResponseSchema,
+  persistenceStatusResponseSchema,
   workspacePreviewRequestSchema,
   workspaceSelectionResponseSchema,
   type DesktopWorkspace,
@@ -18,6 +23,7 @@ import {
   type WorkspaceApprovalResponse,
   type WorkspaceExecutionState,
   type WorkspaceHistoryEntry,
+  type AuditEvent,
 } from "@trivergence/contracts";
 
 import "./styles.css";
@@ -69,6 +75,14 @@ function App() {
   const [detail, setDetail] = useState("README.md");
   const [history, setHistory] = useState<WorkspaceHistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState<string>();
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [auditValid, setAuditValid] = useState<boolean>();
+  const [retentionDays, setRetentionDays] = useState(30);
+  const [privacyMessage, setPrivacyMessage] = useState<string>();
+  const [privacyError, setPrivacyError] = useState<string>();
+  const [persistenceStatus, setPersistenceStatus] =
+    useState<ReturnType<typeof persistenceStatusResponseSchema.parse>>();
+  const [persistenceError, setPersistenceError] = useState<string>();
   const [preview, setPreview] = useState<OrchestrationPreview>();
   const [previewError, setPreviewError] = useState<string>();
   const [planning, setPlanning] = useState(false);
@@ -91,6 +105,25 @@ function App() {
       .catch(() => {
         if (active)
           setDiagnosticsError("No fue posible obtener el diagnóstico local.");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    window.trivergence
+      .getPersistenceStatus()
+      .then((result) => {
+        if (active)
+          setPersistenceStatus(persistenceStatusResponseSchema.parse(result));
+      })
+      .catch((error) => {
+        if (active)
+          setPersistenceError(
+            messageFrom(error, "No se pudo verificar la persistencia local."),
+          );
       });
     return () => {
       active = false;
@@ -174,6 +207,18 @@ function App() {
       setSelectionState("idle");
       invalidatePreview();
       await refreshHistory(selection.workspace.id);
+      const retention = workspaceRetentionResponseSchema.parse(
+        await window.trivergence.getWorkspaceRetention({
+          workspaceId: selection.workspace.id,
+        }),
+      );
+      setRetentionDays(retention.days);
+      setPersistenceStatus(
+        persistenceStatusResponseSchema.parse({
+          ...selection.workspace.persistence,
+          recoveredRuns: selection.workspace.recoveredRuns,
+        }),
+      );
     } catch (error) {
       setSelectionState("idle");
       setPreviewError(
@@ -194,10 +239,77 @@ function App() {
         }),
       );
       setHistory(response.entries);
+      const audit = workspaceAuditResponseSchema.parse(
+        await window.trivergence.getWorkspaceAudit({ workspaceId, limit: 50 }),
+      );
+      setAuditEvents(audit.events);
+      setAuditValid(audit.valid);
       setHistoryError(undefined);
     } catch (error) {
       setHistory([]);
+      setAuditEvents([]);
       setHistoryError(messageFrom(error, "No se pudo cargar el historial."));
+    }
+  }
+
+  async function saveRetention() {
+    if (!workspace) return;
+    setPrivacyError(undefined);
+    try {
+      const result = workspaceRetentionResponseSchema.parse(
+        await window.trivergence.saveWorkspaceRetention({
+          workspaceId: workspace.id,
+          days: retentionDays,
+        }),
+      );
+      setPrivacyMessage(
+        `Retención de ${result.days} día(s) guardada. ${result.deletedRequests} objetivo(s) vencido(s) eliminados.`,
+      );
+      await refreshHistory(workspace.id);
+    } catch (error) {
+      setPrivacyError(messageFrom(error, "No se pudo guardar la retención."));
+    }
+  }
+
+  async function exportData() {
+    if (!workspace) return;
+    setPrivacyError(undefined);
+    try {
+      const result = workspaceDataExportResponseSchema.parse(
+        await window.trivergence.exportWorkspaceData({
+          workspaceId: workspace.id,
+        }),
+      );
+      setPrivacyMessage(
+        result.status === "saved"
+          ? "Exportación JSON guardada. Guárdala en un lugar seguro: puede contener datos sensibles."
+          : "Exportación cancelada.",
+      );
+    } catch (error) {
+      setPrivacyError(messageFrom(error, "No se pudo exportar el workspace."));
+    }
+  }
+
+  async function deleteData() {
+    if (!workspace) return;
+    setPrivacyError(undefined);
+    try {
+      const result = workspaceDataDeleteResponseSchema.parse(
+        await window.trivergence.deleteWorkspaceData({
+          workspaceId: workspace.id,
+        }),
+      );
+      if (result.status === "cancelled") {
+        setPrivacyMessage("Borrado cancelado. No se modificaron los datos.");
+        return;
+      }
+      invalidatePreview();
+      setPrivacyMessage(
+        `${result.deletedRequests} objetivo(s) y sus datos activos eliminados. La cadena de auditoría permanece.`,
+      );
+      await refreshHistory(workspace.id);
+    } catch (error) {
+      setPrivacyError(messageFrom(error, "No se pudieron borrar los datos."));
     }
   }
 
@@ -221,6 +333,7 @@ function App() {
         goal,
         profile,
         privacyMode,
+        retentionDays,
         detail,
       };
       const request = workspacePreviewRequestSchema.parse(base);
@@ -409,6 +522,42 @@ function App() {
       <main id="main-content" className="content" tabIndex={-1}>
         {section === "proveedores" && <ProviderSettings />}
         <div hidden={section === "proveedores"}>
+          {persistenceError && (
+            <p className="error" role="alert">
+              {persistenceError} No ejecutes acciones hasta revisarlo.
+            </p>
+          )}
+          {persistenceStatus &&
+            (persistenceStatus.recovery ||
+              !persistenceStatus.privilegedActionsAvailable ||
+              persistenceStatus.recoveredRuns > 0) && (
+              <section
+                className="panel"
+                role="alert"
+                aria-label="Estado de recuperación"
+              >
+                <h2>Atención: recuperación local</h2>
+                <p>
+                  {persistenceStatus.recovery
+                    ? `Se aisló una base dañada (${persistenceStatus.recovery.incidentId.slice(0, 8)}) el ${new Date(persistenceStatus.recovery.detectedAt).toLocaleString()}. Motivo: ${persistenceStatus.recovery.reason}. Se preservaron ${persistenceStatus.recovery.files.map((file) => file.name).join(", ")} en ${persistenceStatus.recovery.quarantineDirectory}. La base activa puede no contener el historial anterior.`
+                    : (persistenceStatus.reason ??
+                      "La persistencia requiere revisión.")}
+                </p>
+                {persistenceStatus.recoveredRuns > 0 && (
+                  <p>
+                    {persistenceStatus.recoveredRuns} ejecución(es)
+                    interrumpida(s) fueron marcadas como huérfanas.
+                  </p>
+                )}
+                <p>
+                  Modo: {persistenceStatus.mode}. Auditoría:{" "}
+                  {persistenceStatus.auditValid ? "íntegra" : "inválida"}.{" "}
+                  {persistenceStatus.privilegedActionsAvailable
+                    ? "Puedes continuar, pero revisa la pérdida potencial antes de ejecutar."
+                    : "La ejecución y el borrado están bloqueados."}
+                </p>
+              </section>
+            )}
           <div className="workbench">
             <div className="workbenchMain">
               <header id="orquestacion" className="pageHeader">
@@ -978,7 +1127,10 @@ function App() {
                     {run.output?.kind === "workflow" && (
                       <div>
                         <p>
-                          Workflow {run.output.result.outcome} · memoria{" "}
+                          Workflow {run.output.result.outcome} ·{" "}
+                          {privacyMode === "private"
+                            ? "memoria temporal"
+                            : "memoria local"}{" "}
                           {run.output.result.memoryEntryId.slice(0, 8)} ·
                           provenance{" "}
                           {run.output.result.provenanceDigest.slice(0, 12)}
@@ -1078,6 +1230,49 @@ function App() {
                     ))}
                   </ol>
                 )}
+                {workspace && (
+                  <div>
+                    <h3>Eventos de auditoría</h3>
+                    <p role="status">
+                      Cadena:{" "}
+                      {auditValid === undefined
+                        ? "sin verificar"
+                        : auditValid
+                          ? "verificada"
+                          : "inválida · no ejecutar"}
+                      . Últimos {auditEvents.length} eventos de este workspace.
+                    </p>
+                    {auditEvents.length === 0 ? (
+                      <p className="quiet">
+                        No hay eventos consultables para este workspace.
+                      </p>
+                    ) : (
+                      <ol
+                        className="historyList"
+                        aria-label="Eventos de auditoría"
+                      >
+                        {auditEvents.map((event) => (
+                          <li key={event.id}>
+                            <strong>{event.eventType}</strong>
+                            <span>
+                              #{event.sequence} · {event.subjectId.slice(0, 8)}{" "}
+                              · hash {event.eventDigest.slice(0, 12)}
+                            </span>
+                            <small>
+                              {new Date(event.occurredAt).toLocaleString()}
+                            </small>
+                            <details>
+                              <summary>Metadatos del evento</summary>
+                              <pre>
+                                {JSON.stringify(event.payload, null, 2)}
+                              </pre>
+                            </details>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                )}
               </section>
 
               <section
@@ -1095,9 +1290,79 @@ function App() {
                   Ningún proveedor externo está habilitado.
                 </p>
                 <p>
-                  Los objetivos, metadatos de ejecución y memoria M6 se guardan
-                  localmente. Los resultados de proveedores y el streaming son
-                  efímeros; la evidencia conserva hashes.
+                  En modo privado, el texto del objetivo y los argumentos de los
+                  pasos no se conservan en la base; el plan se ejecuta en esta
+                  sesión. El workflow privado usa memoria temporal y no recupera
+                  memoria guardada. Metadatos y hashes siguen siendo locales; el
+                  streaming es efímero.
+                </p>
+                <div className="field">
+                  <label htmlFor="retentionDays">
+                    Retención de historial y memoria
+                  </label>
+                  <select
+                    id="retentionDays"
+                    value={retentionDays}
+                    disabled={!workspace || executionActive}
+                    onChange={(event) => {
+                      setRetentionDays(Number(event.target.value));
+                      invalidatePreview();
+                    }}
+                  >
+                    <option value={1}>1 día</option>
+                    <option value={7}>7 días</option>
+                    <option value={30}>30 días</option>
+                    <option value={90}>90 días</option>
+                    <option value={365}>365 días</option>
+                  </select>
+                </div>
+                {workspace && (
+                  <div className="panelActions">
+                    <button
+                      type="button"
+                      className="secondaryButton"
+                      disabled={
+                        executionActive ||
+                        !workspace.persistence.privilegedActionsAvailable
+                      }
+                      onClick={() => void saveRetention()}
+                    >
+                      Guardar retención
+                    </button>
+                    <button
+                      type="button"
+                      className="secondaryButton"
+                      onClick={() => void exportData()}
+                    >
+                      Exportar JSON
+                    </button>
+                    <button
+                      type="button"
+                      className="secondaryButton"
+                      disabled={
+                        executionActive ||
+                        !workspace.persistence.privilegedActionsAvailable
+                      }
+                      onClick={() => void deleteData()}
+                    >
+                      Borrar datos activos
+                    </button>
+                  </div>
+                )}
+                {privacyMessage && (
+                  <p className="notice" role="status">
+                    {privacyMessage}
+                  </p>
+                )}
+                {privacyError && (
+                  <p className="error" role="alert">
+                    {privacyError}
+                  </p>
+                )}
+                <p className="quiet">
+                  El borrado no elimina la cadena de auditoría (identificadores
+                  y hashes), backups, exportaciones anteriores ni archivos de
+                  recuperación. Elige una ubicación segura para el JSON.
                 </p>
                 {workspace && (
                   <p className="quiet">

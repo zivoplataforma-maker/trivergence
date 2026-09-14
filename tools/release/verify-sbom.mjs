@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const path = resolve(
-  import.meta.dirname,
-  "../../artifacts/trivergence-0.7.0.cdx.json",
+const root = resolve(import.meta.dirname, "../..");
+const { version } = JSON.parse(
+  readFileSync(resolve(root, "apps/desktop/package.json"), "utf8"),
 );
+const path = resolve(root, `artifacts/trivergence-${version}.cdx.json`);
 const raw = readFileSync(path, "utf8");
 const sbom = JSON.parse(raw);
 if (

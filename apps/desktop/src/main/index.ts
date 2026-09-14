@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { writeFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -24,6 +25,8 @@ import {
   workspaceApprovalRequestSchema,
   workspaceExecutionStartRequestSchema,
   workspaceHistoryRequestSchema,
+  workspaceDataExportResponseSchema,
+  workspaceDataDeleteResponseSchema,
   workspacePreviewRequestSchema,
   workspaceRunReferenceSchema,
   workspaceSelectionResponseSchema,
@@ -155,6 +158,10 @@ function registerIpcHandlers(
     assertTrustedSender(event);
     return collectDiagnostics(app.getVersion());
   });
+  ipcMain.handle(ipcChannels.persistenceStatusGet, (event) => {
+    assertTrustedSender(event);
+    return workspaceCoordinator.persistenceStatus();
+  });
 
   ipcMain.handle(ipcChannels.policyEvaluate, (event, payload: unknown) => {
     assertTrustedSender(event);
@@ -250,6 +257,81 @@ function registerIpcHandlers(
       workspaceHistoryRequestSchema.parse(payload),
     );
   });
+  ipcMain.handle(ipcChannels.workspaceAuditGet, (event, payload: unknown) => {
+    assertTrustedSender(event);
+    return workspaceCoordinator.audit(payload);
+  });
+  ipcMain.handle(
+    ipcChannels.workspaceRetentionGet,
+    (event, payload: unknown) => {
+      assertTrustedSender(event);
+      return workspaceCoordinator.retention(payload);
+    },
+  );
+  ipcMain.handle(
+    ipcChannels.workspaceRetentionSave,
+    (event, payload: unknown) => {
+      assertTrustedSender(event);
+      return workspaceCoordinator.saveRetention(payload);
+    },
+  );
+  ipcMain.handle(
+    ipcChannels.workspaceDataDelete,
+    async (event, payload: unknown) => {
+      assertTrustedSender(event);
+      const parent = BrowserWindow.fromWebContents(event.sender);
+      const options = {
+        type: "warning" as const,
+        title: "Borrar datos locales",
+        message: "¿Borrar los datos activos de este workspace?",
+        detail:
+          "La cadena de auditoría, los backups y archivos de recuperación no se borran. Esta acción no se puede deshacer desde Trivergence.",
+        buttons: ["Cancelar", "Borrar datos"],
+        cancelId: 0,
+        defaultId: 0,
+        noLink: true,
+      };
+      const confirmation = parent
+        ? await dialog.showMessageBox(parent, options)
+        : await dialog.showMessageBox(options);
+      if (confirmation.response !== 1)
+        return workspaceDataDeleteResponseSchema.parse({
+          status: "cancelled",
+          deletedRequests: 0,
+        });
+      return workspaceCoordinator.deleteWorkspaceData(payload);
+    },
+  );
+  ipcMain.handle(
+    ipcChannels.workspaceDataExport,
+    async (event, payload: unknown) => {
+      assertTrustedSender(event);
+      const report = workspaceCoordinator.exportWorkspaceData(payload);
+      const parent = BrowserWindow.fromWebContents(event.sender);
+      const options = {
+        title: "Exportar datos locales de Trivergence",
+        defaultPath: `trivergence-${String(report.workspaceId).slice(0, 8)}-export.json`,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      };
+      const selection = parent
+        ? await dialog.showSaveDialog(parent, options)
+        : await dialog.showSaveDialog(options);
+      if (selection.canceled || !selection.filePath) {
+        return workspaceDataExportResponseSchema.parse({ status: "cancelled" });
+      }
+      const temp = `${selection.filePath}.${randomUUID()}.tmp`;
+      try {
+        await writeFile(temp, `${JSON.stringify(report, null, 2)}\n`, {
+          flag: "wx",
+          mode: 0o600,
+        });
+        await rename(temp, selection.filePath);
+      } finally {
+        await rm(temp, { force: true });
+      }
+      return workspaceDataExportResponseSchema.parse({ status: "saved" });
+    },
+  );
 
   ipcMain.handle(
     ipcChannels.workspaceApprovalRequest,
@@ -356,34 +438,47 @@ app.on("second-instance", () => {
   existing.focus();
 });
 
-void app.whenReady().then(async () => {
-  Menu.setApplicationMenu(null);
-  registerApplicationProtocol();
-  installSecurityGuards();
-  const userDataPath = app.getPath("userData");
-  const { store: persistence, recovery } = await openPersistenceWithRecovery(
-    path.join(userDataPath, "trivergence.sqlite"),
-    path.join(userDataPath, "recovery"),
-  );
-  const recoveredRuns = persistence.health.privilegedActionsAvailable
-    ? persistence.recoverRunningRuns(new Date().toISOString()).length
-    : 0;
-  const workspaceCoordinator = new DesktopWorkspaceCoordinator(
-    persistence,
-    recoveredRuns,
-    recovery,
-  );
-  registerIpcHandlers(workspaceCoordinator);
-  createWindow();
+void app
+  .whenReady()
+  .then(async () => {
+    Menu.setApplicationMenu(null);
+    registerApplicationProtocol();
+    installSecurityGuards();
+    const userDataPath = app.getPath("userData");
+    const { store: persistence, recovery } = await openPersistenceWithRecovery(
+      path.join(userDataPath, "trivergence.sqlite"),
+      path.join(userDataPath, "recovery"),
+    );
+    const recoveredRuns = persistence.health.privilegedActionsAvailable
+      ? persistence.recoverRunningRuns(new Date().toISOString()).length
+      : 0;
+    const workspaceCoordinator = new DesktopWorkspaceCoordinator(
+      persistence,
+      recoveredRuns,
+      recovery,
+    );
+    registerIpcHandlers(workspaceCoordinator);
+    createWindow();
 
-  app.once("before-quit", () => {
-    persistence.close();
-  });
+    app.once("before-quit", () => {
+      persistence.close();
+    });
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  })
+  .catch((error: unknown) => {
+    const reason =
+      error instanceof Error
+        ? error.message
+        : "Error de persistencia desconocido";
+    dialog.showErrorBox(
+      "Trivergence no puede iniciar",
+      `No se pudo abrir ni preservar la base local. No se ejecutó ninguna acción. Revisa los permisos y conserva los archivos de userData antes de intentar reparar. Detalle: ${reason}`,
+    );
+    app.quit();
   });
-});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

@@ -34,12 +34,18 @@ export class MemoryService {
     this.#idFactory = options.idFactory ?? randomUUID;
   }
 
-  recall(namespace: string, budget: CoordinationBudget): MemoryRecallResult {
-    const rows = this.persistence.listMemoryEntries(
-      namespace,
-      this.#clock().toISOString(),
-      Math.max(1, budget.maxMemoryItems || 1),
-    );
+  recall(
+    namespace: string,
+    budget: CoordinationBudget,
+    includeStored = true,
+  ): MemoryRecallResult {
+    const rows = includeStored
+      ? this.persistence.listMemoryEntries(
+          namespace,
+          this.#clock().toISOString(),
+          Math.max(1, budget.maxMemoryItems || 1),
+        )
+      : [];
     const items = [];
     let totalBytes = 0;
     let truncated = rows.length > budget.maxMemoryItems;
@@ -94,6 +100,7 @@ export class MemoryService {
     readonly stepId: string;
     readonly candidate: WorkflowCandidate;
     readonly budget: CoordinationBudget;
+    readonly persist?: boolean;
   }): MemoryCommitResult {
     if (sha256(input.candidate.candidate) !== input.candidate.candidateDigest) {
       throw new Error("Workflow candidate content digest mismatch");
@@ -124,19 +131,21 @@ export class MemoryService {
       expiresAt: expiresAt.toISOString(),
       provenance,
     });
-    this.persistence.saveMemoryEntry({
-      id: entry.id,
-      namespace: input.namespace,
-      subjectDigest: sha256(input.candidate.workflowId),
-      content: entry.content,
-      contentDigest: entry.contentDigest,
-      provenance,
-      sourceRunId: input.runId,
-      sourcePlanId: input.planId,
-      sourceStepId: input.stepId,
-      createdAt: entry.createdAt,
-      expiresAt: entry.expiresAt,
-    });
+    if (input.persist !== false) {
+      this.persistence.saveMemoryEntry({
+        id: entry.id,
+        namespace: input.namespace,
+        subjectDigest: sha256(input.candidate.workflowId),
+        content: entry.content,
+        contentDigest: entry.contentDigest,
+        provenance,
+        sourceRunId: input.runId,
+        sourcePlanId: input.planId,
+        sourceStepId: input.stepId,
+        createdAt: entry.createdAt,
+        expiresAt: entry.expiresAt,
+      });
+    }
     return memoryCommitResultSchema.parse({
       schemaVersion: "1",
       entry,

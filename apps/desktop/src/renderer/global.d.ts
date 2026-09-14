@@ -4,6 +4,7 @@ declare global {
       getProviderConfiguration(): Promise<unknown>;
       saveProviderConfiguration(request: unknown): Promise<unknown>;
       getDiagnostics(): Promise<unknown>;
+      getPersistenceStatus(): Promise<unknown>;
       evaluatePolicy(request: unknown): Promise<unknown>;
       previewOrchestration(request: unknown): Promise<unknown>;
       selectWorkspace(): Promise<unknown>;
@@ -12,6 +13,11 @@ declare global {
       getWorkspaceExecution(request: unknown): Promise<unknown>;
       cancelWorkspaceExecution(request: unknown): Promise<unknown>;
       getWorkspaceHistory(request: unknown): Promise<unknown>;
+      getWorkspaceAudit(request: unknown): Promise<unknown>;
+      getWorkspaceRetention(request: unknown): Promise<unknown>;
+      saveWorkspaceRetention(request: unknown): Promise<unknown>;
+      deleteWorkspaceData(request: unknown): Promise<unknown>;
+      exportWorkspaceData(request: unknown): Promise<unknown>;
       requestWorkspaceApproval(request: unknown): Promise<unknown>;
       decideWorkspaceApproval(request: unknown): Promise<unknown>;
     };

@@ -70,8 +70,11 @@ La migración `0005_objective_history_privacy` añade `workspace_id` y
 run, objetivo y estrategia, limita resultados al workspace activo y no devuelve
 el contenido de output. El ID del workspace deriva de la ruta canónica, lo que
 permite reabrir su historial sin persistir un identificador aleatorio de sesión.
-El texto del objetivo sí queda almacenado localmente y puede contener
-información sensible escrita por el usuario.
+Desde `0006_privacy_retention`, una nueva solicitud privada conserva un marcador
+en vez del texto del objetivo y elimina los argumentos del paso de su artefacto
+persistido. La memoria del workflow privado es temporal y no recupera entradas
+guardadas. Las solicitudes estándar y las privadas anteriores a esta migración
+conservan los datos que ya estaban en la base.
 
 ## Memoria M6
 
@@ -79,8 +82,9 @@ información sensible escrita por el usuario.
 
 - namespace de workspace, contenido y digest se guardan como datos funcionales;
 - provenance liga run, plan, step, workflow, equipo y Reference Provider;
-- `expires_at` aplica retención y `deleted_at` implementa borrado lógico;
-- contenido, provenance y retención son inmutables mediante trigger;
+- `expires_at` aplica retención y `deleted_at` conserva un tombstone;
+- al borrar/expirar se vacían `content` y `provenance_json` en la misma
+  transacción; el trigger de `0006` admite únicamente esa redacción controlada;
 - eventos de commit/delete/prune contienen IDs y digests, nunca contenido.
 
 ## Agregados posteriores
@@ -98,18 +102,20 @@ hash de archivo y versión del indexador.
 - SQLite Online Backup API o mecanismo equivalente consistente; nunca copiar un
   WAL activo a ciegas.
 - Manifest con versión de esquema, hashes y fecha.
-- Backup cifrado es P1; hasta entonces la UI informa que contiene datos legibles
-  por el usuario del sistema.
+- El backup no está cifrado; la UI y la documentación advierten que copias y
+  exportaciones pueden contener datos legibles.
 - Restauración siempre a una nueva ubicación temporal, validación de integridad
   y swap recuperable.
 
 ## Retención inicial
 
-- audit metadata: indefinida hasta que el usuario configure política;
-- output completo de procesos: 30 días por defecto, configurable;
+- audit metadata: append-only e indefinida; no se borra con un workspace;
+- outputs completos de procesos: efímeros en la implementación actual;
 - temporales: eliminados al cierre exitoso o recuperados/depurados al próximo
   inicio;
-- memoria M6: 30 días por defecto, 1–365 días, más borrado explícito;
+- memoria M6: 30 días por defecto por ejecución, 1–365 días configurables;
+- historial y registros activos por workspace: política de 1–365 días aplicada
+  solo tras guardarla explícitamente, más borrado manual confirmado;
 - conversaciones/notas futuras: hasta eliminación explícita.
 
-Los defaults se validarán con investigación y se mostrarán durante onboarding.
+El borrado no elimina backups, cuarentenas ni exportaciones anteriores.

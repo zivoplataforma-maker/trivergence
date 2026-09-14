@@ -369,7 +369,9 @@ export class PersistenceStore {
         )
         .run(
           preview.request.id,
-          preview.request.goal,
+          preview.request.privacyMode !== "standard"
+            ? "[Objetivo privado no conservado]"
+            : preview.request.goal,
           preview.request.profile,
           JSON.stringify(preview.request.requestedCapabilities),
           createdAt,
@@ -450,7 +452,11 @@ export class PersistenceStore {
           step.capabilityId,
           step.subsystem,
           JSON.stringify(step.dependsOn),
-          JSON.stringify(step.action),
+          JSON.stringify(
+            preview.request.privacyMode !== "standard"
+              ? { ...step.action, input: {} }
+              : step.action,
+          ),
           JSON.stringify(step.policy),
         );
       });
@@ -986,7 +992,8 @@ export class PersistenceStore {
     return this.#transaction(() => {
       const result = this.#database
         .prepare(
-          `UPDATE memory_entries SET deleted_at = ?
+          `UPDATE memory_entries
+           SET deleted_at = ?, content = '', provenance_json = '{}'
            WHERE id = ? AND deleted_at IS NULL`,
         )
         .run(deletedAt, id);
@@ -1022,7 +1029,9 @@ export class PersistenceStore {
         )
         .all(now) as Record<string, unknown>[];
       const update = this.#database.prepare(
-        "UPDATE memory_entries SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
+        `UPDATE memory_entries
+         SET deleted_at = ?, content = '', provenance_json = '{}'
+         WHERE id = ? AND deleted_at IS NULL`,
       );
       for (const row of rows) {
         update.run(now, String(row.id));
@@ -1065,7 +1074,12 @@ export class PersistenceStore {
     limit = 25,
   ): PersistedExecutionHistoryEntry[] {
     this.#assertOpen();
-    if (!workspaceId || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+    if (
+      !workspaceId ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 10_000
+    ) {
       throw new Error("Invalid execution history query");
     }
     const rows = this.#database
@@ -1128,6 +1142,196 @@ export class PersistenceStore {
   listAuditEvents(): AuditEvent[] {
     this.#assertOpen();
     return listAuditEvents(this.#database);
+  }
+
+  listWorkspaceAuditEvents(workspaceId: string, limit = 50): AuditEvent[] {
+    this.#assertOpen();
+    if (!workspaceId || !Number.isSafeInteger(limit) || limit < 1) {
+      throw new Error("Invalid workspace audit query");
+    }
+    const requests = this.#database
+      .prepare("SELECT id FROM orchestration_requests WHERE workspace_id = ?")
+      .all(workspaceId) as { id: string }[];
+    const subjects = new Set<string>([
+      workspaceId,
+      ...requests.map((row) => row.id),
+    ]);
+    const plans = this.#database
+      .prepare(
+        `SELECT plans.id FROM execution_plans AS plans
+       JOIN orchestration_requests AS requests ON requests.id = plans.request_id
+       WHERE requests.workspace_id = ?`,
+      )
+      .all(workspaceId) as { id: string }[];
+    for (const row of plans) subjects.add(row.id);
+    const runs = this.#database
+      .prepare(
+        `SELECT runs.id FROM execution_runs AS runs
+       JOIN orchestration_requests AS requests ON requests.id = runs.request_id
+       WHERE requests.workspace_id = ?`,
+      )
+      .all(workspaceId) as { id: string }[];
+    for (const row of runs) subjects.add(row.id);
+    for (const table of [
+      "step_evidence",
+      "provider_checkpoints",
+      "memory_entries",
+    ] as const) {
+      const rows = this.#database
+        .prepare(
+          `SELECT records.id FROM ${table} AS records
+         JOIN execution_runs AS runs ON runs.id = records.${table === "memory_entries" ? "source_run_id" : "run_id"}
+         JOIN orchestration_requests AS requests ON requests.id = runs.request_id
+         WHERE requests.workspace_id = ?`,
+        )
+        .all(workspaceId) as { id: string }[];
+      for (const row of rows) subjects.add(row.id);
+    }
+    const approvals = this.#database
+      .prepare(
+        `SELECT approvals.id FROM approvals
+       JOIN execution_plans AS plans ON plans.id = approvals.plan_id
+       JOIN orchestration_requests AS requests ON requests.id = plans.request_id
+       WHERE requests.workspace_id = ?`,
+      )
+      .all(workspaceId) as { id: string }[];
+    for (const row of approvals) subjects.add(row.id);
+    return listAuditEvents(this.#database)
+      .filter((event) => subjects.has(event.subjectId))
+      .slice(-limit)
+      .reverse();
+  }
+
+  getWorkspaceRetention(workspaceId: string): number {
+    this.#assertOpen();
+    if (!workspaceId) throw new Error("Invalid workspace id");
+    try {
+      const row = this.#database
+        .prepare("SELECT days FROM workspace_retention WHERE workspace_id = ?")
+        .get(workspaceId) as { days: number } | undefined;
+      return row?.days ?? 30;
+    } catch (error) {
+      if (this.#health.mode === "readonly-recovery") return 30;
+      throw error;
+    }
+  }
+
+  hasWorkspaceRetention(workspaceId: string): boolean {
+    this.#assertOpen();
+    if (!workspaceId) throw new Error("Invalid workspace id");
+    return Boolean(
+      this.#database
+        .prepare("SELECT 1 FROM workspace_retention WHERE workspace_id = ?")
+        .get(workspaceId),
+    );
+  }
+
+  setWorkspaceRetention(workspaceId: string, days: number): void {
+    this.#assertWritable();
+    if (!workspaceId || !Number.isInteger(days) || days < 1 || days > 365) {
+      throw new Error("Invalid workspace retention");
+    }
+    this.#transaction(() => {
+      this.#database
+        .prepare(
+          `INSERT INTO workspace_retention(workspace_id, days) VALUES (?, ?)
+         ON CONFLICT(workspace_id) DO UPDATE SET days = excluded.days`,
+        )
+        .run(workspaceId, days);
+      this.#audit.append({
+        eventType: "privacy.retention_changed",
+        subjectId: workspaceId,
+        payload: { days },
+      });
+    });
+  }
+
+  purgeWorkspaceData(workspaceId: string, before?: string): number {
+    this.#assertWritable();
+    if (!workspaceId || (before && !Number.isFinite(Date.parse(before)))) {
+      throw new Error("Invalid workspace data purge");
+    }
+    const cutoff = before ?? "9999-12-31T23:59:59.999Z";
+    return this.#transaction(() => {
+      const target = `SELECT id FROM orchestration_requests
+        WHERE workspace_id = ? AND created_at < ?`;
+      const plans = `SELECT id FROM execution_plans WHERE request_id IN (${target})`;
+      const runs = `SELECT id FROM execution_runs WHERE request_id IN (${target})`;
+      const count = this.#database
+        .prepare(
+          `SELECT COUNT(*) AS count FROM orchestration_requests
+         WHERE workspace_id = ? AND created_at < ?`,
+        )
+        .get(workspaceId, cutoff) as { count: number };
+      if (count.count === 0) return 0;
+      const bindings = [workspaceId, cutoff];
+      for (const [table, column, subquery] of [
+        ["memory_entries", "source_run_id", runs],
+        ["provider_checkpoints", "run_id", runs],
+        ["step_evidence", "run_id", runs],
+        ["approvals", "plan_id", plans],
+        ["execution_runs", "request_id", target],
+        ["plan_evaluations", "plan_id", plans],
+        ["plan_steps", "plan_id", plans],
+        ["strategies", "plan_id", plans],
+        ["execution_plans", "request_id", target],
+      ] as const) {
+        this.#database
+          .prepare(`DELETE FROM ${table} WHERE ${column} IN (${subquery})`)
+          .run(...bindings);
+      }
+      this.#database
+        .prepare(
+          `DELETE FROM orchestration_requests WHERE workspace_id = ? AND created_at < ?`,
+        )
+        .run(...bindings);
+      this.#audit.append({
+        eventType: "privacy.workspace_data_deleted",
+        subjectId: workspaceId,
+        payload: {
+          deletedRequests: count.count,
+          retention: before !== undefined,
+        },
+      });
+      return count.count;
+    });
+  }
+
+  exportWorkspaceData(workspaceId: string): Record<string, unknown> {
+    this.#assertOpen();
+    if (!workspaceId) throw new Error("Invalid workspace id");
+    const requestFilter = `SELECT id FROM orchestration_requests WHERE workspace_id = ?`;
+    const planFilter = `SELECT id FROM execution_plans WHERE request_id IN (${requestFilter})`;
+    const runFilter = `SELECT id FROM execution_runs WHERE request_id IN (${requestFilter})`;
+    const rows = (table: string, condition: string) =>
+      this.#database
+        .prepare(`SELECT * FROM ${table} WHERE ${condition}`)
+        .all(workspaceId);
+    return {
+      formatVersion: 1,
+      exportedAt: this.#clock().toISOString(),
+      workspaceId,
+      retentionDays: this.getWorkspaceRetention(workspaceId),
+      requests: rows("orchestration_requests", "workspace_id = ?"),
+      plans: rows("execution_plans", `request_id IN (${requestFilter})`),
+      capabilitySnapshots: rows(
+        "capability_snapshots",
+        `id IN (SELECT registry_snapshot_id FROM execution_plans WHERE request_id IN (${requestFilter}))`,
+      ),
+      strategies: rows("strategies", `plan_id IN (${planFilter})`),
+      steps: rows("plan_steps", `plan_id IN (${planFilter})`),
+      evaluations: rows("plan_evaluations", `plan_id IN (${planFilter})`),
+      approvals: rows("approvals", `plan_id IN (${planFilter})`),
+      runs: rows("execution_runs", `request_id IN (${requestFilter})`),
+      evidence: rows("step_evidence", `run_id IN (${runFilter})`),
+      checkpoints: rows("provider_checkpoints", `run_id IN (${runFilter})`),
+      memory: rows("memory_entries", `source_run_id IN (${runFilter})`),
+      auditEvents: this.listWorkspaceAuditEvents(
+        workspaceId,
+        Number.MAX_SAFE_INTEGER,
+      ),
+      auditChainValid: this.verifyAuditChain().valid,
+    };
   }
 
   verifyAuditChain(): AuditChainVerification {

@@ -19,6 +19,13 @@ import {
   workspaceFileOutputSchema,
   workspaceHistoryRequestSchema,
   workspaceHistoryResponseSchema,
+  workspaceAuditRequestSchema,
+  workspaceAuditResponseSchema,
+  workspaceRetentionRequestSchema,
+  workspaceRetentionResponseSchema,
+  workspaceDataRequestSchema,
+  workspaceDataDeleteResponseSchema,
+  persistenceStatusResponseSchema,
   workspaceProviderOutputSchema,
   workspacePreviewRequestSchema,
   workspaceRunReferenceSchema,
@@ -134,6 +141,17 @@ export class DesktopWorkspaceCoordinator {
         : canonicalPath,
     );
     const workspaceId = `${identity.slice(0, 8)}-${identity.slice(8, 12)}-5${identity.slice(13, 16)}-a${identity.slice(17, 20)}-${identity.slice(20, 32)}`;
+    if (this.persistence.health.privilegedActionsAvailable) {
+      if (this.persistence.hasWorkspaceRetention(workspaceId)) {
+        const retentionDays =
+          this.persistence.getWorkspaceRetention(workspaceId);
+        const cutoff = new Date(
+          Date.now() - retentionDays * 86_400_000,
+        ).toISOString();
+        this.persistence.purgeWorkspaceData(workspaceId, cutoff);
+      }
+      this.persistence.pruneExpiredMemory(new Date().toISOString());
+    }
     const root = new WorkspaceRoot({ id: workspaceId, path: canonicalPath });
     const service = new WorkspaceService(root);
     const memory = new MemoryService(this.persistence);
@@ -197,6 +215,7 @@ export class DesktopWorkspaceCoordinator {
                 incidentId: this.recovery.incidentId,
                 detectedAt: this.recovery.detectedAt,
                 reason: this.recovery.reason,
+                quarantineDirectory: this.recovery.quarantineDirectory,
                 files: this.recovery.files,
               },
             }
@@ -386,6 +405,105 @@ export class DesktopWorkspaceCoordinator {
         request.limit,
       ),
     });
+  }
+
+  persistenceStatus() {
+    const health = this.persistence.health;
+    return persistenceStatusResponseSchema.parse({
+      mode: health.mode,
+      databaseIntegrity: health.databaseIntegrity,
+      auditValid: health.audit.valid,
+      privilegedActionsAvailable: health.privilegedActionsAvailable,
+      recoveredRuns: this.recoveredRuns,
+      ...(health.reason ? { reason: health.reason } : {}),
+      ...(this.recovery
+        ? {
+            recovery: {
+              incidentId: this.recovery.incidentId,
+              detectedAt: this.recovery.detectedAt,
+              reason: this.recovery.reason,
+              quarantineDirectory: this.recovery.quarantineDirectory,
+              files: this.recovery.files,
+            },
+          }
+        : {}),
+    });
+  }
+
+  audit(input: unknown) {
+    const request = workspaceAuditRequestSchema.parse(input);
+    this.#session(request.workspaceId);
+    return workspaceAuditResponseSchema.parse({
+      valid: this.persistence.verifyAuditChain().valid,
+      events: this.persistence.listWorkspaceAuditEvents(
+        request.workspaceId,
+        request.limit,
+      ),
+    });
+  }
+
+  retention(input: unknown) {
+    const request = workspaceDataRequestSchema.parse(input);
+    this.#session(request.workspaceId);
+    return workspaceRetentionResponseSchema.parse({
+      days: this.persistence.getWorkspaceRetention(request.workspaceId),
+      deletedRequests: 0,
+    });
+  }
+
+  saveRetention(input: unknown) {
+    const request = workspaceRetentionRequestSchema.parse(input);
+    this.#session(request.workspaceId);
+    if (
+      [...this.#runs.values()].some(
+        (run) =>
+          run.workspaceId === request.workspaceId &&
+          ["running", "cancelling"].includes(run.state.status),
+      )
+    )
+      throw new Error("Cancel the active execution before changing retention");
+    this.persistence.assertPrivilegedActionsAvailable();
+    const cutoff = new Date(
+      Date.now() - request.days * 86_400_000,
+    ).toISOString();
+    const deletedRequests = this.persistence.purgeWorkspaceData(
+      request.workspaceId,
+      cutoff,
+    );
+    this.persistence.setWorkspaceRetention(request.workspaceId, request.days);
+    return workspaceRetentionResponseSchema.parse({
+      days: request.days,
+      deletedRequests,
+    });
+  }
+
+  deleteWorkspaceData(input: unknown) {
+    const request = workspaceDataRequestSchema.parse(input);
+    this.#session(request.workspaceId);
+    if (
+      [...this.#runs.values()].some(
+        (run) =>
+          run.workspaceId === request.workspaceId &&
+          ["running", "cancelling"].includes(run.state.status),
+      )
+    )
+      throw new Error("Cancel the active execution before deleting data");
+    this.persistence.assertPrivilegedActionsAvailable();
+    const deletedRequests = this.persistence.purgeWorkspaceData(
+      request.workspaceId,
+    );
+    this.#previews.clear();
+    this.#runs.clear();
+    return workspaceDataDeleteResponseSchema.parse({
+      status: "deleted",
+      deletedRequests,
+    });
+  }
+
+  exportWorkspaceData(input: unknown) {
+    const request = workspaceDataRequestSchema.parse(input);
+    this.#session(request.workspaceId);
+    return this.persistence.exportWorkspaceData(request.workspaceId);
   }
 
   cancelExecution(input: WorkspaceRunReference) {

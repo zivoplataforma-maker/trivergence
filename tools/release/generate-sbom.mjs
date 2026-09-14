@@ -4,7 +4,10 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "../..");
 const outputDirectory = resolve(root, "artifacts");
-const output = resolve(outputDirectory, "trivergence-0.7.0.cdx.json");
+const { version } = JSON.parse(
+  readFileSync(resolve(root, "apps/desktop/package.json"), "utf8"),
+);
+const output = resolve(outputDirectory, `trivergence-${version}.cdx.json`);
 mkdirSync(outputDirectory, { recursive: true });
 const pnpmEntry = process.env.npm_execpath;
 if (!pnpmEntry) throw new Error("pnpm entrypoint is unavailable");
