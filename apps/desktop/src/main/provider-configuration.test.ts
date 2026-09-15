@@ -33,6 +33,7 @@ describe("provider configuration boundary", () => {
       installation: "detected",
       authentication: "not_checked",
       gate: "pending",
+      availability: "unavailable",
       executionEnabled: false,
       blocked: true,
     });

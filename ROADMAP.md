@@ -4,6 +4,26 @@ El roadmap usa puertas de evidencia, no porcentajes subjetivos. El orden refleja
 que Trivergence es un sistema de orquestación: primero decide y explica; después
 ejecuta y conecta subsistemas.
 
+## P2 — product hardening y preparación de M5
+
+Estado: `READY_FOR_CI` para el alcance interno de consolidación, sin activar
+conectores. Los gates locales pasaron; el cierre exige CI Windows verde.
+
+- recorrido Objective-first visible y unido a los estados reales de Strategy,
+  preflight, aprobación, Runtime, postflight y evidencia;
+- frontera única `AdapterHost` obligatoria para todo `ProviderStepDispatcher`;
+- suite de conformidad reutilizable de 14 checks aprobada por Reference
+  Provider, incluida recuperación tras interrupción y fail-closed hostil;
+- estados de proveedor con invariantes y disponibilidad separada de gate y
+  habilitación;
+- summaries/errores persistidos sanitizados en modo privado;
+- seis capturas reales preparadas como assets, sin alterar el README público.
+
+P2 reduce riesgo de integración, pero no constituye un gate externo. El
+siguiente paso M5 sigue siendo obtener aprobación técnica/contractual/legal para
+una ruta oficial exacta y recién entonces implementar su adaptador contra esta
+suite. M5 y M7 permanecen `PARTIAL`.
+
 ## Preparación de proveedores sin API keys (2026-09-14)
 
 Interfaz y preferencias locales terminadas y verificadas. Los cuatro candidatos

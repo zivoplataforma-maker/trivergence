@@ -8,6 +8,7 @@ import {
   orchestrationRequestSchema,
   orchestrationPreviewSchema,
   policyEvaluationRequestSchema,
+  providerConfigurationEntrySchema,
   providerExecutionResultSchema,
   providerGateReviewSchema,
   providerOperationAttestationSchema,
@@ -270,5 +271,31 @@ describe("shared contracts", () => {
       "vendor.local-model",
     );
     expect(() => providerIdSchema.parse("../Unsafe Provider")).toThrow();
+  });
+
+  it("rejects impossible provider execution states", () => {
+    const blocked = {
+      id: "future-provider",
+      displayName: "Future provider",
+      method: "official_oauth" as const,
+      guidance: "Not enabled",
+      installation: "detected" as const,
+      authentication: "authenticated" as const,
+      gate: "pending" as const,
+      availability: "unavailable" as const,
+      executionEnabled: false,
+      blocked: true,
+      blockers: ["Gate pending"],
+    };
+    expect(providerConfigurationEntrySchema.parse(blocked)).toEqual(blocked);
+    expect(() =>
+      providerConfigurationEntrySchema.parse({
+        ...blocked,
+        executionEnabled: true,
+      }),
+    ).toThrow(/Execution state/u);
+    expect(() =>
+      providerConfigurationEntrySchema.parse({ ...blocked, blockers: [] }),
+    ).toThrow(/explicit reason/u);
   });
 });

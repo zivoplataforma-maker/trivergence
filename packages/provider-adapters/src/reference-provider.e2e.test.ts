@@ -15,6 +15,7 @@ import { RuntimeEngine } from "@trivergence/runtime";
 import { describe, expect, it } from "vitest";
 
 import {
+  AdapterHost,
   createReferenceProviderCapability,
   ProviderStepDispatcher,
   ReferenceProviderAdapter,
@@ -60,9 +61,13 @@ const fixture = (input: ProviderRequestInput) => {
       persistence: store,
       dispatchers: [
         new ProviderStepDispatcher({
-          capabilityId: referenceProviderCapabilityId,
-          capabilityVersion: capability.version,
-          adapter,
+          host: new AdapterHost([
+            {
+              capabilityId: referenceProviderCapabilityId,
+              capabilityVersion: capability.version,
+              adapter,
+            },
+          ]),
         }),
       ],
       revalidate: (candidate) => engine.revalidate(candidate),

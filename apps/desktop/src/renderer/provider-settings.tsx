@@ -105,7 +105,10 @@ export function ProviderSettings() {
                   </span>
                   <h2>{provider.displayName}</h2>
                   <span className="blockedLabel">
-                    {provider.blocked ? "Bloqueado" : "Disponible"}
+                    {provider.availability === "unavailable"
+                      ? "No disponible"
+                      : "Disponible"}
+                    {provider.blocked ? " · bloqueado" : ""}
                   </span>
                 </div>
                 <p>{provider.guidance}</p>
@@ -140,6 +143,12 @@ export function ProviderSettings() {
                         : provider.gate === "denied"
                           ? "Denegado"
                           : "Pendiente"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Disponible en Trivergence</dt>
+                    <dd>
+                      {provider.availability === "available" ? "Sí" : "No"}
                     </dd>
                   </div>
                   <div>

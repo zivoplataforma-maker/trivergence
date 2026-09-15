@@ -1,6 +1,6 @@
 # Estado de implementación
 
-Última actualización: 2026-09-14
+Última actualización: 2026-09-15
 
 Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 `PLANNED` no iniciado, `BLOCKED` requiere una decisión o dependencia externa.
@@ -15,6 +15,37 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 | M5 — primer conector                | PARTIAL | Contrato/Reference Provider local verificados; ningún proveedor externo superó aún su gate.                        |
 | M6 — workflows, agentes y memoria   | DONE    | Pipeline local de cinco pasos, budgets, provenance, memoria, evaluación, auditoría, E2E y build verificados.       |
 | M7 — hardening/distribución Windows | PARTIAL | Controles y paquete unsigned verificados localmente; faltan reproducibilidad NSIS, firma y matriz limpia Win10/11. |
+
+## P2 — product hardening y preparación de M5 (2026-09-15)
+
+Estado: `READY_FOR_CI` para el alcance interno P2. Los gates locales finales
+pasaron; no se cambiará a `DONE` hasta obtener CI Windows verde. No habilita
+proveedores ni cambia M5/M7.
+
+- Auditoría desde `6f81f26`: línea base sin caché, E2E, smoke, seguridad y SBOM
+  pasaron antes de modificar; P1 ya figuraba cerrado en la documentación.
+- El flujo objetivo primero se presenta como una secuencia única desde Strategy
+  y preflight hasta postflight, evidencia e historial. No se añadió una función
+  de producto ni una superficie de IDE.
+- `ProviderStepDispatcher` exige un `AdapterHost` explícito; se eliminó la vía
+  heredada que construía hosts privados. Desktop mantiene un host por sesión.
+- Suite de conformidad exportada con 14 checks: capability, prepare, execute,
+  stream, cancelación, recovery, interrupción, timeout, fallos tipados, budgets,
+  provenance, aprobación, respuesta malformada y proveedor no alojado. Reference
+  Provider pasa; no representa una IA externa.
+- Configuración separa disponibilidad de instalación, autenticación, gate,
+  habilitación y bloqueo, y rechaza combinaciones imposibles.
+- Runtime evita persistir summaries o excepciones de dispatchers en modo
+  privado. La regresión verifica objetivo, argumentos, error, export y
+  auditoría.
+- Seis capturas reales y sanitizadas se generan mediante Electron en
+  `docs/assets/screenshots/`; no se insertó nada en el README público.
+- Hallazgos, decisiones y riesgos remanentes: `docs/product/p2-audit.md`.
+
+Evidencia local final: formato y lint; build y typecheck de 12 proyectos; **142
+tests**; Electron E2E y smoke; auditoría sin vulnerabilidades conocidas; SBOM
+CycloneDX verificado con 451 componentes. Falta registrar el run de CI Windows
+sobre el commit de esta entrega.
 
 ## P1 transversal hacia v1.0 (2026-09-14)
 

@@ -269,6 +269,49 @@ h3 {
   box-shadow: none;
 }
 
+.flowRail {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 2px;
+}
+
+.flowRail li {
+  min-width: 0;
+  border-top: 2px solid var(--border);
+  color: var(--muted);
+  padding: 10px 4px 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.flowRail li span {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 5px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.flowRail li.complete {
+  border-color: var(--accent);
+  color: #c4f8df;
+}
+
+.flowRail li.active {
+  border-color: #cba14a;
+  color: #ffe3a3;
+}
+
+.flowRail li.blocked {
+  border-color: #c55560;
+  color: #ffd2d2;
+}
+
 .panelHeader p,
 .panel > p:last-child {
   margin-bottom: 0;
@@ -872,6 +915,9 @@ summary {
   .navIcon {
     display: none;
   }
+  .flowRail {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 620px) {
@@ -885,6 +931,10 @@ summary {
   .providerGrid,
   .evaluationGrid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flowRail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .fieldWide {

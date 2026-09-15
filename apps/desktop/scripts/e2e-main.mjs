@@ -11,6 +11,7 @@ const directory = path.dirname(fileURLToPath(import.meta.url));
 const applicationRoot = path.resolve(directory, "..");
 const mainEntry = path.resolve(applicationRoot, "dist/main/index.js");
 const E2E_TIMEOUT_MS = 40_000;
+const documentationCaptureDirectory = process.env.TRIVERGENCE_CAPTURE_DIR;
 
 process.env.TRIVERGENCE_E2E_TEST = "1";
 
@@ -88,7 +89,7 @@ app.on("browser-window-created", (_event, window) => {
               "Workspace selection did not complete",
             );
 
-            const previewButton = findButton("Generar preview");
+            const previewButton = findButton("Comparar rutas y crear plan");
             if (!previewButton) throw new Error("Preview button was not rendered");
             previewButton.click();
             await waitFor(
@@ -118,7 +119,7 @@ app.on("browser-window-created", (_event, window) => {
             await waitFor(() => !document.querySelector(".planStep"),
               "Changing the objective did not invalidate the plan");
 
-            const searchPreview = findButton("Generar preview");
+            const searchPreview = findButton("Comparar rutas y crear plan");
             if (!searchPreview || searchPreview.disabled) {
               throw new Error("Search preview button was not enabled");
             }
@@ -149,7 +150,7 @@ app.on("browser-window-created", (_event, window) => {
             setValue("#profile", "assistant");
             await waitFor(() => !document.querySelector(".planStep"),
               "Reference objective did not invalidate the plan");
-            const referencePreview = findButton("Generar preview");
+            const referencePreview = findButton("Comparar rutas y crear plan");
             referencePreview.click();
             await waitFor(
               () => document.querySelector(".planStep")?.textContent
@@ -194,7 +195,7 @@ app.on("browser-window-created", (_event, window) => {
             setValue("#detail", "");
             await waitFor(() => !document.querySelector(".planStep"),
               "M6 objective did not invalidate the plan");
-            const m6Preview = findButton("Generar preview");
+            const m6Preview = findButton("Comparar rutas y crear plan");
             m6Preview.click();
             await waitFor(
               () => document.querySelectorAll(".planStep").length === 5,
@@ -383,6 +384,61 @@ app.on("browser-window-created", (_event, window) => {
         path.join(screenshotDirectory, "ui-providers.png"),
         (await window.webContents.capturePage()).toPNG(),
       );
+      if (documentationCaptureDirectory) {
+        mkdirSync(documentationCaptureDirectory, { recursive: true });
+        window.setSize(1440, 950);
+        const capture = async (
+          name,
+          navigationTarget,
+          selector,
+          waitSelector = selector,
+        ) => {
+          await window.webContents.executeJavaScript(`
+            (async () => {
+            document.querySelector('nav a[href="#${navigationTarget}"]')?.click();
+            for (let attempt = 0; attempt < 100 && !document.querySelector(${JSON.stringify(waitSelector)}); attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+            ${selector === "__top__" ? "window.scrollTo(0, 0);" : `document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({ block: "start" });`}
+            })()
+          `);
+          window.webContents.invalidate();
+          await delay(300);
+          writeFileSync(
+            path.join(documentationCaptureDirectory, name),
+            (await window.webContents.capturePage()).toPNG(),
+          );
+        };
+        await capture(
+          "01-mission-control.png",
+          "orquestacion",
+          "__top__",
+          "#orquestacion",
+        );
+        await capture(
+          "02-objective-strategy-plan.png",
+          "orquestacion",
+          "[aria-labelledby='plan-title']",
+        );
+        await capture(
+          "03-execution-approvals-progress.png",
+          "ejecucion",
+          ".approvalCenter",
+        );
+        await capture(
+          "04-history-audit-evidence.png",
+          "historial",
+          "#historial",
+        );
+        await capture("05-privacy-recovery.png", "privacidad", "#privacidad");
+        await capture(
+          "06-provider-gates.png",
+          "proveedores",
+          "#proveedores",
+          "#preferred-provider",
+        );
+      }
       const violations = await window.webContents.executeJavaScript(`
         window.axe.run(document, {
           runOnly: {

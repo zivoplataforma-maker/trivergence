@@ -14,17 +14,13 @@ import type {
   StepDispatcher,
 } from "@trivergence/runtime";
 
-import { AdapterHost } from "./adapter-host.js";
-import type { ProviderAdapter } from "./provider-adapter.js";
+import type { AdapterHost } from "./adapter-host.js";
 
 const sha256 = (value: string) =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
 export interface ProviderStepDispatcherOptions {
-  readonly host?: AdapterHost;
-  readonly capabilityId?: string;
-  readonly capabilityVersion?: string;
-  readonly adapter?: ProviderAdapter;
+  readonly host: AdapterHost;
 }
 
 export class ProviderStepDispatcher implements StepDispatcher {
@@ -34,23 +30,7 @@ export class ProviderStepDispatcher implements StepDispatcher {
   readonly #host: AdapterHost;
 
   constructor(options: ProviderStepDispatcherOptions) {
-    if (options.host) {
-      this.#host = options.host;
-    } else if (
-      options.capabilityId &&
-      options.capabilityVersion &&
-      options.adapter
-    ) {
-      this.#host = new AdapterHost([
-        {
-          capabilityId: options.capabilityId,
-          capabilityVersion: options.capabilityVersion,
-          adapter: options.adapter,
-        },
-      ]);
-    } else {
-      throw new Error("ProviderStepDispatcher requires one AdapterHost");
-    }
+    this.#host = options.host;
     this.capabilityIds = this.#host.capabilityIds();
     this.capabilityId = this.capabilityIds[0]!;
   }

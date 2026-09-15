@@ -124,14 +124,31 @@ latencia, fallo no recuperable y fallo recuperable deterministas para probar:
 - errores tipados, retry único y checkpoint persistente;
 - provenance, evidencia y flujo E2E de escritorio.
 
+## Suite de conformidad reutilizable
+
+`runProviderConformanceSuite` es una puerta exportada y agnóstica del framework
+de tests. Recibe una factory del adaptador, capability, fixtures hostiles y una
+comprobación del límite de aprobación propiedad de Runtime. Devuelve un reporte
+por check; no habilita ni registra el proveedor.
+
+La suite exige: declaración de capability, prepare y preview sin contexto crudo,
+execute, stream ordenado, cancelación, recuperación acotada, reanudación tras
+interrupción, timeout, errores tipados, budgets de entrada/salida, provenance,
+aprobación antes del dispatch, rechazo de respuestas malformadas y rechazo de
+capabilities no alojadas. El Reference Provider pasa los 14 checks. Los tests
+E2E persistentes siguen verificando checkpoints, evidencia y aprobación de un
+uso porque esas responsabilidades pertenecen a Runtime, no al adaptador.
+
 ## Checklist para un adaptador real después del gate
 
 1. Superar el gate técnico, contractual y legal de la ruta exacta.
 2. Publicar capability y attestation solo para versiones y auth aprobadas.
-3. Implementar `ProviderAdapter`; reutilizar `ProviderStepDispatcher`.
+3. Implementar `ProviderAdapter`; alojarlo en un `AdapterHost` explícito y
+   reutilizar `ProviderStepDispatcher`.
 4. Mapear el protocolo oficial a los eventos y errores del contrato.
 5. Aplicar budgets, redacción, cancelación y recuperación del transporte.
-6. Añadir fixtures por versión y tests de formato hostil, auth, truncado y red.
+6. Pasar la suite de conformidad con fixtures por versión y añadir tests
+   específicos de auth, truncado y red.
 7. Incorporar el digest de attestation al trust store del release.
 
 No se modifica Strategy Engine, Execution Planner, Capability Registry ni

@@ -230,6 +230,7 @@ export class RuntimeEngine {
       return this.#blocked(
         input.plan?.id ?? input.request?.id ?? "unknown",
         error,
+        input.request?.privacyMode !== "standard",
       );
     }
 
@@ -240,6 +241,7 @@ export class RuntimeEngine {
       return this.#blocked(
         preview.plan.id,
         new Error(denied?.policy.reason ?? preview.evaluation.reason),
+        preview.request.privacyMode !== "standard",
       );
     }
 
@@ -274,6 +276,7 @@ export class RuntimeEngine {
           return this.#blocked(
             preview.plan.id,
             new Error(`Approval denied for ${resolved.step.id}`),
+            preview.request.privacyMode !== "standard",
           );
         }
         return {
@@ -294,6 +297,7 @@ export class RuntimeEngine {
       return this.#blocked(
         preview.plan.id,
         new Error("This plan already has an active execution"),
+        preview.request.privacyMode !== "standard",
       );
     }
 
@@ -428,7 +432,12 @@ export class RuntimeEngine {
             )
           : await current.dispatcher.dispatch(dispatchContext);
         this.#validateDispatchResult(result);
-        this.#appendEvidence(run, current, result);
+        this.#appendEvidence(
+          run,
+          current,
+          result,
+          preview.request.privacyMode !== "standard",
+        );
         if (result.outcome === "succeeded" && latestCheckpointRecordId) {
           this.#persistence.consumeProviderCheckpoint(
             latestCheckpointRecordId,
@@ -458,7 +467,9 @@ export class RuntimeEngine {
           return this.#finishRun(
             run.id,
             status,
-            result.summary,
+            preview.request.privacyMode !== "standard"
+              ? `Private ${current.step.subsystem} step ${result.outcome}`
+              : result.summary,
             evidenceCount,
             outputs,
           );
@@ -477,7 +488,11 @@ export class RuntimeEngine {
       return this.#finishRun(
         run.id,
         status,
-        error instanceof Error ? error.message : "Runtime execution failed",
+        preview.request.privacyMode !== "standard"
+          ? "Private execution failed safely"
+          : error instanceof Error
+            ? error.message
+            : "Runtime execution failed",
         evidenceCount,
         outputs,
       );
@@ -587,6 +602,7 @@ export class RuntimeEngine {
     run: ExecutionRun,
     resolved: ResolvedStep,
     result: DispatchResult,
+    privateMode: boolean,
   ): void {
     this.#persistence.appendEvidence(
       stepEvidenceSchema.parse({
@@ -599,7 +615,9 @@ export class RuntimeEngine {
         capabilityVersion: resolved.descriptor.capabilityVersion,
         outcome: result.outcome,
         observedAt: this.#clock().toISOString(),
-        summary: result.summary,
+        summary: privateMode
+          ? `Private ${resolved.step.subsystem} step ${result.outcome}`
+          : result.summary,
         ...(result.outputDigest ? { outputDigest: result.outputDigest } : {}),
       }),
     );
@@ -637,8 +655,16 @@ export class RuntimeEngine {
     return { status, reason, runId, evidenceCount, outputs };
   }
 
-  #blocked(subjectId: string, error: unknown): RuntimeExecutionResult {
-    const reason = error instanceof Error ? error.message : "Execution blocked";
+  #blocked(
+    subjectId: string,
+    error: unknown,
+    privateMode: boolean,
+  ): RuntimeExecutionResult {
+    const reason = privateMode
+      ? "Private execution blocked safely"
+      : error instanceof Error
+        ? error.message
+        : "Execution blocked";
     try {
       this.#persistence.appendAuditEvent("execution.blocked", subjectId, {
         reason,

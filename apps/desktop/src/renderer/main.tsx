@@ -462,6 +462,35 @@ function App() {
     preview.evaluation.status !== "blocked" &&
     approvalsReady &&
     !executionActive;
+  const terminalRun = Boolean(
+    run && !["running", "cancelling"].includes(run.status),
+  );
+  const flowStages = [
+    {
+      label: "Objetivo",
+      complete: Boolean(workspace && goal.trim().length >= 3),
+    },
+    { label: "Estrategia y plan", complete: Boolean(preview) },
+    {
+      label: "Preflight",
+      complete: Boolean(preview && preview.evaluation.status !== "blocked"),
+      blocked: preview?.evaluation.status === "blocked",
+    },
+    {
+      label: "Aprobación",
+      complete: Boolean(preview && approvalsReady),
+      active: Boolean(preview && !approvalsReady),
+    },
+    {
+      label: "Ejecución",
+      complete: terminalRun,
+      active: executionActive,
+    },
+    {
+      label: "Postflight y evidencia",
+      complete: Boolean(terminalRun && run?.outcomeEvaluation),
+    },
+  ];
 
   return (
     <div className="shell">
@@ -571,6 +600,26 @@ function App() {
                 </div>
                 <div className="securityBadge">Control local</div>
               </header>
+
+              <ol className="flowRail" aria-label="Flujo de orquestación">
+                {flowStages.map((stage, index) => (
+                  <li
+                    key={stage.label}
+                    className={
+                      stage.blocked
+                        ? "blocked"
+                        : stage.complete
+                          ? "complete"
+                          : stage.active
+                            ? "active"
+                            : "pending"
+                    }
+                  >
+                    <span aria-hidden="true">{index + 1}</span>
+                    {stage.label}
+                  </li>
+                ))}
+              </ol>
 
               <section className="panel" aria-labelledby="workspace-title">
                 <div className="panelHeader">
@@ -735,7 +784,9 @@ function App() {
                       type="submit"
                       disabled={!workspace || planning || executionActive}
                     >
-                      {planning ? "Planificando…" : "Generar preview"}
+                      {planning
+                        ? "Comparando rutas…"
+                        : "Comparar rutas y crear plan"}
                     </button>
                     {!workspace && <span>Primero selecciona una carpeta.</span>}
                   </div>

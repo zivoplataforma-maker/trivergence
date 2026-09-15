@@ -28,6 +28,15 @@ export {
   type ProviderAdapterManifest,
 } from "./provider-adapter.js";
 export {
+  providerConformanceCheckIds,
+  runProviderConformanceSuite,
+  type ProviderConformanceCheck,
+  type ProviderConformanceCheckId,
+  type ProviderConformanceFixtures,
+  type ProviderConformanceReport,
+  type ProviderConformanceSubject,
+} from "./provider-conformance.js";
+export {
   ProviderStepDispatcher,
   type ProviderStepDispatcherOptions,
 } from "./provider-step-dispatcher.js";

@@ -35,11 +35,39 @@ export const providerConfigurationEntrySchema = z
       "not_required",
     ]),
     gate: z.enum(["pending", "authorized", "denied"]),
+    availability: z.enum(["available", "unavailable"]),
     executionEnabled: z.boolean(),
     blocked: z.boolean(),
     blockers: z.array(z.string()),
   })
-  .strict();
+  .strict()
+  .superRefine((provider, context) => {
+    const executable =
+      provider.installation === "detected" &&
+      ["authenticated", "not_required"].includes(provider.authentication) &&
+      provider.gate === "authorized" &&
+      provider.availability === "available" &&
+      !provider.blocked;
+    if (provider.executionEnabled !== executable) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Execution state must agree with installation, authentication, gate, availability and blockers",
+      });
+    }
+    if (provider.blocked && provider.blockers.length === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "Blocked providers require an explicit reason",
+      });
+    }
+    if (!provider.blocked && provider.blockers.length > 0) {
+      context.addIssue({
+        code: "custom",
+        message: "Unblocked providers cannot retain blocker reasons",
+      });
+    }
+  });
 export const providerConfigurationSchema = z
   .object({
     preferences: providerPreferencesSchema,

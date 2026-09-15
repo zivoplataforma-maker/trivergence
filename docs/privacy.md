@@ -34,7 +34,9 @@ La documentación de esquema y retención está en
 - modo privado por defecto: Strategy descarta rutas con capacidades de red y
   Runtime vuelve a rechazarlas antes de los efectos; el texto del objetivo y los
   argumentos de los pasos no se persisten en nuevas solicitudes privadas; el
-  workflow no recupera memoria guardada y su resultado de memoria es temporal;
+  Runtime reemplaza summaries y excepciones de dispatchers por motivos
+  estructurales antes de persistir evidencia o estados terminales; workflow no
+  recupera memoria guardada y su resultado de memoria es temporal;
 - exclusiones obligatorias y configurables;
 - vista previa de contexto saliente;
 - retención configurable de 1 a 365 días para los registros activos de cada
@@ -48,11 +50,11 @@ La documentación de esquema y retención está en
 ## Limitaciones
 
 El modo privado no cifra la base local ni oculta todos los metadatos del plan:
-identificadores, hashes, fechas, rutas o resúmenes de evidencia pueden revelar
-información. Las solicitudes antiguas conservan el objetivo que ya tenían. El
-borrado no elimina los eventos append-only de auditoría (identificadores y
-hashes), backups, cuarentenas, archivos exportados ni copias externas. SQLite
-usa `secure_delete`, pero no se promete borrado forense en discos SSD, snapshots
-del sistema o backups. La exportación contiene datos sensibles y debe
-custodiarse. Trivergence no puede controlar la retención de una CLI externa si
-se habilita en el futuro; actualmente no hay proveedores externos ejecutables.
+identificadores, hashes, fechas y rutas pueden revelar información. Las
+solicitudes antiguas conservan el objetivo que ya tenían. El borrado no elimina
+los eventos append-only de auditoría (identificadores y hashes), backups,
+cuarentenas, archivos exportados ni copias externas. SQLite usa `secure_delete`,
+pero no se promete borrado forense en discos SSD, snapshots del sistema o
+backups. La exportación contiene datos sensibles y debe custodiarse. Trivergence
+no puede controlar la retención de una CLI externa si se habilita en el futuro;
+actualmente no hay proveedores externos ejecutables.

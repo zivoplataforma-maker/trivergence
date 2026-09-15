@@ -14,13 +14,14 @@ Renderer → IPC nominal → ProviderConfigurationService → preferencias local
 Este camino no tiene acceso a adaptadores, clientes de red, almacenes de
 credenciales o escritura de attestations. Los nuevos contratos son aditivos.
 
-| Dimensión     | Evidencia actual                                         | No implica                                  |
-| ------------- | -------------------------------------------------------- | ------------------------------------------- |
-| Instalación   | Búsqueda existente de ejecutable en PATH, sin ejecutarlo | Versión compatible o identidad autenticada  |
-| Autenticación | Sin comprobar; Ollama local no requiere cuenta           | Permiso contractual o gate aprobado         |
-| Gate          | Pendiente en los cuatro candidatos                       | Un login o preferencia no puede autorizarlo |
-| Ejecución     | Deshabilitada en los cuatro candidatos                   | Guardar no registra capacidades             |
-| Bloqueo       | Razones independientes visibles                          | No es un fallo de contraseña                |
+| Dimensión      | Evidencia actual                                         | No implica                                  |
+| -------------- | -------------------------------------------------------- | ------------------------------------------- |
+| Instalación    | Búsqueda existente de ejecutable en PATH, sin ejecutarlo | Versión compatible o identidad autenticada  |
+| Autenticación  | Sin comprobar; Ollama local no requiere cuenta           | Permiso contractual o gate aprobado         |
+| Gate           | Pendiente en los cuatro candidatos                       | Un login o preferencia no puede autorizarlo |
+| Disponibilidad | No disponible: no existe adaptador autorizado alojado    | Detección o login no publica una capability |
+| Ejecución      | Deshabilitada en los cuatro candidatos                   | Guardar no registra capacidades             |
+| Bloqueo        | Razones independientes visibles                          | No es un fallo de contraseña                |
 
 Los estados autenticado/autorizado están representados en el contrato de
 respuesta para la evolución posterior, pero no hay un setter ni IPC que los
@@ -28,6 +29,11 @@ acepte. El servicio actual informa pending/false de manera conservadora; no
 pretende verificar un gate real aprobado. Al integrar un proveedor, la fuente de
 estos estados deberá ser el gestor de autenticación oficial y el evaluador de
 gates existentes, nunca el JSON de preferencias.
+
+El contrato rechaza estados imposibles: `executionEnabled` solo puede ser true
+si instalación, autenticación, gate y disponibilidad son afirmativos y no hay
+bloqueo; todo bloqueo exige una razón visible. El renderer no puede escribir
+ninguna de esas dimensiones.
 
 ## Preferencias y persistencia
 
@@ -76,10 +82,11 @@ en el contrato actual. El adaptador futuro seguirá entrando por AdapterHost.
 
 ## Evidencia
 
-Tests del servicio cubren separación de estados, persistencia entre instancias,
-inyección de autoridad/secretos, endpoints no locales, campos desconocidos y
-preservación de archivo corrupto. E2E recorre guardado desde renderer mediante
-preload/IPC real, rechaza autoridad falsificada y comprueba los cuatro bloqueos.
+Tests del servicio cubren separación e invariantes cruzadas de estados,
+persistencia entre instancias, inyección de autoridad/secretos, endpoints no
+locales, campos desconocidos y preservación de archivo corrupto. E2E recorre
+guardado desde renderer mediante preload/IPC real, rechaza autoridad falsificada
+y comprueba los cuatro bloqueos.
 
 ## Fuentes oficiales de las rutas futuras
 

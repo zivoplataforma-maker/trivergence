@@ -24,6 +24,7 @@ terceros.
 | Patrón               | Comportamiento                                                              | Accesibilidad                                                    |
 | -------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | Navegación           | Objetivo, ejecución, historial, privacidad, diagnóstico, proveedores        | Enlaces con nombre, ubicación actual, acceso por teclado         |
+| Rail del flujo       | Objetivo → plan → preflight → aprobación → ejecución → postflight/evidencia | Lista ordenada con texto y estado, no depende solo del color     |
 | Resumen de sesión    | Objetivo → estrategia → ejecución → evidencia; lateral en pantallas amplias | Lista ordenada, sin depender del color                           |
 | Tarjeta de proveedor | Cuatro dimensiones y razones de bloqueo                                     | Encabezado y lista de definiciones; details/summary nativo       |
 | Formulario local     | Preferido, loopback y modelo; guardar explícito                             | Labels, mensajes de estado/error; carga, guardado y solo lectura |
@@ -32,6 +33,10 @@ La navegación a Proveedores oculta el trabajo sin destruir su estado; al volver
 se conserva el objetivo y la ejecución. La vista de configuración vuelve a leer
 sus preferencias guardadas al abrirla. Borradores no guardados se descartan al
 salir; guardar siempre informa que no activa conexiones.
+
+La acción primaria evita jerga interna: “Comparar rutas y crear plan”. El rail
+resume el estado real ya producido por Strategy, Evaluation y Runtime; no es un
+workflow paralelo ni permite saltar gates.
 
 Layout de una columna en ancho reducido y zoom 200%; resumen lateral desde
 1350px. Objetivos, budgets y controles de aprobación no cambian. Los errores y

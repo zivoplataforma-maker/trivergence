@@ -113,6 +113,7 @@ export class ProviderConfigurationService {
           authentication:
             entry.id === "ollama" ? "not_required" : "not_checked",
           gate: "pending",
+          availability: "unavailable",
           executionEnabled: false,
           blocked: true,
           blockers: [

@@ -411,7 +411,7 @@ describe("RuntimeEngine", () => {
     expect(await fixture.runtime.execute(preview)).toMatchObject({
       status: "failed",
       evidenceCount: 0,
-      reason: "Dispatcher output digest does not match its result",
+      reason: "Private execution failed safely",
     });
     fixture.store.close();
   });
@@ -513,6 +513,40 @@ describe("RuntimeEngine", () => {
     const completion = runtime.execute(preview);
     expect(runtime.cancel("40000000-0000-4000-8000-000000000001")).toBe(true);
     expect(await completion).toMatchObject({ status: "cancelled" });
+    store.close();
+  });
+
+  it("does not persist private goals, arguments or dispatcher errors", async () => {
+    const secret = "PRIVATE_RUNTIME_SECRET_9f6a";
+    const privateAction = {
+      ...action("safe", ["read"]),
+      input: { query: secret },
+    };
+    const base = makePreview("observer", privateAction);
+    const preview: OrchestrationPreview = {
+      ...base,
+      request: {
+        ...base.request,
+        goal: secret,
+        privacyMode: "private",
+        workspaceId: "90000000-0000-4000-8000-000000000001",
+      },
+    };
+    const { runtime, store } = runtimeFixture(
+      preview,
+      new FakeDispatcher({
+        outcome: "failed",
+        summary: `Transport echoed ${secret}`,
+      }),
+    );
+
+    const result = await runtime.execute(preview);
+    const persisted = JSON.stringify(
+      store.exportWorkspaceData(preview.request.workspaceId!),
+    );
+    expect(result.reason).toBe("Private runtime step failed");
+    expect(persisted).not.toContain(secret);
+    expect(persisted).toContain("Private runtime step failed");
     store.close();
   });
 
