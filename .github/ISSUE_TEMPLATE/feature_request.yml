@@ -18,7 +18,9 @@ body:
     id: proposal
     attributes:
       label: Proposed direction
-      description: Describe the smallest useful change. You do not need to provide a full implementation design.
+      description:
+        Describe the smallest useful change. You do not need to provide a full
+        implementation design.
     validations:
       required: true
   - type: dropdown
@@ -43,11 +45,14 @@ body:
     id: trust
     attributes:
       label: Trust, security or provider implications
-      description: Note any new permissions, external communication, provider assumptions or privileged actions. Write "None" if not applicable.
+      description:
+        Note any new permissions, external communication, provider assumptions
+        or privileged actions. Write "None" if not applicable.
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
       label: Alternatives considered
-      description: Optional. What simpler approach or workaround did you consider?
+      description:
+        Optional. What simpler approach or workaround did you consider?

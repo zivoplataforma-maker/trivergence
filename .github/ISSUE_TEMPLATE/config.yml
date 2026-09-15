@@ -2,7 +2,10 @@ blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
     url: https://github.com/zivoplataforma-maker/trivergence/blob/main/SECURITY.md
-    about: Do not disclose sensitive vulnerabilities in a public issue. Read the security policy first.
+    about:
+      Do not disclose sensitive vulnerabilities in a public issue. Read the
+      security policy first.
   - name: Project roadmap and status
     url: https://github.com/zivoplataforma-maker/trivergence/blob/main/IMPLEMENTATION_STATUS.md
-    about: Check what is actually implemented and verified before proposing work.
+    about:
+      Check what is actually implemented and verified before proposing work.

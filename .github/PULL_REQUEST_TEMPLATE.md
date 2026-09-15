@@ -18,15 +18,18 @@ List the checks you actually ran. Do not mark checks that were not executed.
 
 ## Trust, security & privacy
 
-- Does this change permissions, workspace access, process execution, persistence, credentials, provider authentication or external communication?
+- Does this change permissions, workspace access, process execution,
+  persistence, credentials, provider authentication or external communication?
 - Does it change an approval or policy boundary?
-- Does it add or alter a provider capability? If yes, link the official-source gate evidence.
+- Does it add or alter a provider capability? If yes, link the official-source
+  gate evidence.
 
 Write `None` if there is no material impact.
 
 ## Evidence / screenshots
 
-Add useful evidence for behavior or UI changes. Redact private information and credentials.
+Add useful evidence for behavior or UI changes. Redact private information and
+credentials.
 
 ## Remaining limitations
 

@@ -18,7 +18,8 @@ body:
     id: reproduce
     attributes:
       label: Steps to reproduce
-      description: Give the smallest reliable sequence that reproduces the problem.
+      description:
+        Give the smallest reliable sequence that reproduces the problem.
       placeholder: |
         1. Start ...
         2. Select ...
@@ -35,12 +36,15 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Windows version, Node/pnpm versions, and relevant runtime details.
+      description:
+        Windows version, Node/pnpm versions, and relevant runtime details.
   - type: textarea
     id: evidence
     attributes:
       label: Logs or evidence
-      description: Paste only relevant, redacted output. Never include secrets or private data.
+      description:
+        Paste only relevant, redacted output. Never include secrets or private
+        data.
       render: shell
   - type: textarea
     id: context
@@ -52,7 +56,11 @@ body:
     attributes:
       label: Safety check
       options:
-        - label: I removed credentials, tokens, personal data and other secrets from this report.
+        - label:
+            I removed credentials, tokens, personal data and other secrets from
+            this report.
           required: true
-        - label: This is not a sensitive security vulnerability requiring private disclosure.
+        - label:
+            This is not a sensitive security vulnerability requiring private
+            disclosure.
           required: true
