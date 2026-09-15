@@ -139,10 +139,10 @@ aplicables, sin bloquear M6 o M7.
 - `PENDING`: un adaptador oficial con fixtures por versión, parser del protocolo
   aprobado y destino de red exacto.
 
-Codex App Server es el primer candidato recomendado, no un proveedor habilitado.
-Claude Platform mediante `ant` queda segundo y Gemini sobre Vertex AI como ruta
-empresarial. Gemini CLI OAuth y Claude Code Pro/Max OAuth están rechazados para
-automatización de terceros.
+Codex App Server y Claude Code oficial son candidatos no habilitados con gates
+`UNRESOLVED`; todavía no existe un primer proveedor externo elegido. Claude
+Platform mediante `ant` y Gemini sobre Vertex AI conservan rutas alternativas.
+Gemini CLI OAuth y Agent SDK con login Claude.ai propio están rechazados.
 
 ### M5-A — resultado del gate Codex App Server (2026-09-15)
 
@@ -156,6 +156,22 @@ Siguiente paso mínimo: enviar las preguntas de
 `docs/providers/codex-app-server-open-questions.md` a OpenAI. Solo después de
 una respuesta citable se fija una versión/schema, se diseña recovery y se
 autoriza un spike aislado. Codex continúa deshabilitado y M5 sigue `PARTIAL`.
+
+### M5-A2 — resultado del gate Claude/Anthropic (2026-09-15)
+
+`UNRESOLVED`. Anthropic permite ejecutar Claude Code oficial e inalterado en
+productos y documenta `claude -p` para automatización estructurada. El usuario
+autentica su cuenta dentro del cliente oficial; Trivergence no ofrece OAuth ni
+lee credenciales. Pro, Max, Team y Enterprise pueden usar hoy límites de
+suscripción; Free no incluye Claude Code. `ant` + Console OAuth es la
+alternativa con billing API separado.
+
+No se autoriza un spike: recovery del mismo turn continúa bloqueado y debe
+confirmarse que el uso exacto como provider entra en el permiso de ejecutar
+Claude Code sin convertirse en un login/rate-limit propio del Agent SDK.
+Siguiente paso mínimo: enviar `docs/providers/claude-open-questions.md` a
+Anthropic. Claude continúa deshabilitado, el Reference Provider sigue siendo el
+único ejecutable y M5 permanece `PARTIAL`.
 
 ## M6 — workflows, agentes y memoria
 

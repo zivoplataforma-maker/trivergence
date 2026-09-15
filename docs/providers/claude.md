@@ -1,47 +1,62 @@
 # Gate de proveedor — Claude/Anthropic
 
-Estado: Claude Platform `CONDITIONAL — SECOND`; Claude Code OAuth `REJECTED`  
-Verificado contra fuentes oficiales: 2026-08-07  
-Vence: 2026-09-07 o ante cambios de interfaz/términos
+Estado global: `UNRESOLVED`  
+Verificado contra fuentes oficiales: 2026-09-15  
+Próxima revisión: ante respuesta oficial, cambio de términos o interfaz
 
-## Ruta sin API key candidata
+## Mejor vía oficial encontrada
 
-El CLI oficial `ant` permite OAuth contra Claude Console, con token limitado a
-un workspace, para desarrollo y scripting en la propia máquina. Trivergence
-delegaría login, refresh y perfiles al CLI, sin imprimir credenciales. Para
-servidores/empresa, Workload Identity Federation usa identidad del IdP y tokens
-breves.
+La vía mejor alineada con el requisito sin API keys es una instalación
+independiente, oficial e inalterada de Claude Code, ejecutada mediante
+`claude -p`. Anthropic documenta su uso programático y permite ejecutar el
+binario publicado dentro de productos si cada usuario autentica su propia cuenta
+y su consumo se factura bajo su propio acuerdo.
 
-Fuentes:
+Trivergence no ofrecería un OAuth de Claude.ai ni vería contraseñas, cookies,
+tokens o credential stores. El login seguiría siendo una función del cliente
+oficial. Claude Platform mediante el CLI `ant` y OAuth de Console queda como
+alternativa oficial sin clave manual, pero con facturación API separada.
 
-- [Autenticación de ant](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/authentication)
-- [Scripting con ant](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/scripting)
-- [Autenticación de Claude Platform](https://platform.claude.com/docs/en/manage-claude/authentication)
+## Decisión
+
+- Technical Gate: `UNRESOLVED`; streaming y cancelación están documentados, pero
+  no existe recovery del mismo turn interrumpido.
+- Security Gate: `CONDITIONALLY_APPROVED`; los modos safe/restricted y tools
+  vacías permiten un diseño aislado, todavía sin prueba real.
+- Authentication Gate: `CONDITIONALLY_APPROVED`; el cliente oficial posee el
+  login, mientras Agent SDK con OAuth propio sigue prohibido sin aprobación.
+- Contractual Gate: `UNRESOLVED`; debe confirmarse que usar `claude -p` como
+  provider cae dentro del permiso para ejecutar Claude Code en productos.
+- Distribution Gate: `CONDITIONALLY_APPROVED`; el binario no se modifica ni
+  redistribuye y debe instalarse por un canal oficial independiente.
+- Commercial/Billing Gate: `CONDITIONALLY_APPROVED`; Pro, Max, Team y Enterprise
+  pueden usar hoy límites de suscripción; Free no incluye Claude Code.
+  Console/API se paga aparte.
+
+No se construye adapter ni spike mientras los gates técnico y contractual sigan
+sin resolver.
+
+## Límites expresos
+
+La autorización condicional no permite incorporar Agent SDK con login Claude.ai,
+copiar sesiones de Claude Code ni intermediar consumo. Tampoco convierte Claude
+Desktop en backend. Trivergence no lee credenciales y no utiliza
+`claude setup-token`. Un futuro adapter solo podría lanzar el binario oficial
+externo con tools, plugins, hooks, MCP y acceso al workspace deshabilitados.
+
+## Documentos de control
+
+- [Expediente completo M5-A2](claude-gate.md)
+- [Preguntas abiertas para Anthropic](claude-open-questions.md)
+- [Threat model específico](../security/threat-model-claude.md)
+- [Comparación oficial](comparison-2026-08-07.md)
+
+Fuentes oficiales principales:
+
+- [Legal y compliance de Claude Code](https://code.claude.com/docs/en/legal-and-compliance)
+- [Ejecución programática](https://code.claude.com/docs/en/headless)
+- [Referencia CLI](https://code.claude.com/docs/en/cli-usage)
+- [Agent SDK](https://code.claude.com/docs/en/agent-sdk)
+- [Uso del plan con Agent SDK](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
+- [Autenticación de `ant`](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/authentication)
 - [Commercial Terms](https://www.anthropic.com/legal/commercial-terms)
-- [Consumer Terms](https://www.anthropic.com/legal/consumer-terms)
-- [Usage Policy](https://www.anthropic.com/legal/aup)
-
-## Ruta rechazada
-
-Claude Code autenticado con Claude.ai Free/Pro/Max no será backend de
-Trivergence. Consumer Terms prohíbe acceso automatizado/no humano salvo API key
-o permiso explícito. No se ofrece login Claude.ai, no se lee su credential store
-y no se invoca `claude -p` con esa suscripción.
-
-## Alcance inicial si se aprueba
-
-Messages/streaming, JSON estricto, conteo y propuestas `tool_use`; las tools
-vuelven a Planner/Policy/Runtime. Managed Agents, Files, Batches, code
-execution, MCP, server tools y beta requieren gates independientes.
-
-## Bloqueos
-
-Confirmación escrita de Anthropic para wrapper comercial de `ant`,
-no-reventa/no-competencia y redistribución; exigir inicialmente instalación y
-login del usuario; Commercial Terms/DPA/Usage Policy; privacidad, retención/ZDR,
-región/export, disclosure/HITL, versión/fixtures y attestation firmada.
-
-`ant auth status` solo informa origen/configuración; no prueba salud. Un futuro
-probe debería usar además una operación read-only como listado de modelos.
-
-Ver [expediente comparativo](comparison-2026-08-07.md).

@@ -8,22 +8,24 @@ Renovación obligatoria: 2026-09-07 o ante cualquier cambio de fuente
 > Codex de este comparativo. El resultado actual es `UNRESOLVED`, no
 > `CONDITIONAL`, porque el comando figura experimental/no soportado para
 > producción, falta claridad contractual para Plus/Pro y existe un gap de
-> recovery. Véase [codex-app-server-gate.md](codex-app-server-gate.md). Las
-> evaluaciones de Claude y Gemini conservan su fecha original y no se
-> reabrieron.
+> recovery. Véase [codex-app-server-gate.md](codex-app-server-gate.md). La
+> evaluación M5-A2 de Claude también fue reemplazada el 2026-09-15: la mejor
+> ruta es ejecutar Claude Code oficial e inalterado, pero su resultado global
+> sigue `UNRESOLVED`. Gemini conserva su fecha original y no se reabrió.
 
 Este expediente es análisis de producto y riesgo, no asesoramiento legal. Solo
 un revisor jurídico autorizado puede aprobar la columna legal del gate.
 
 ## Dictamen ejecutivo
 
-| Proveedor/ruta                 | Autenticación oficial sin API key                                           | Interfaz estructurada                                               | Aplicación de terceros                                                                       | Gate actual                |
-| ------------------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------- |
-| Codex App Server               | ChatGPT browser/device code gestionado por Codex                            | JSON-RPC sobre `stdio`, streaming, cancelación, schemas y approvals | El embedding técnico está documentado; el entitlement de terceros con Plus/Pro no está claro | `UNRESOLVED — PREFERRED`   |
-| Claude Platform mediante `ant` | OAuth de Claude Console para desarrollo/scripting local; WIF para workloads | CLI/API JSON, streaming, Messages, strict output y tool proposals   | Scripting está permitido; embedding/distribución por un tercero no está dicho expresamente   | `CONDITIONAL — SECOND`     |
-| Gemini en Vertex AI            | OAuth/ADC/IAM con proyecto Cloud, billing y cliente OAuth propio            | API/SDK, streaming, schema JSON y function calling                  | Customer Applications están contempladas, con Cloud/IAM/OAuth propios                        | `CONDITIONAL — ENTERPRISE` |
-| Gemini CLI/Code Assist OAuth   | Login Google del producto oficial                                           | La CLI tiene modos agentic/estructurados                            | Google prohíbe que software de terceros use/piggyback ese OAuth/backend                      | `REJECTED`                 |
-| Claude Code Pro/Max OAuth      | Login de suscripción dentro de Claude Code                                  | `-p`, JSON/stream-json                                              | Consumer Terms bloquean automatización salvo API key o permiso explícito                     | `REJECTED`                 |
+| Proveedor/ruta                   | Autenticación oficial sin API key                                           | Interfaz estructurada                                               | Aplicación de terceros                                                                       | Gate actual                |
+| -------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------- |
+| Codex App Server                 | ChatGPT browser/device code gestionado por Codex                            | JSON-RPC sobre `stdio`, streaming, cancelación, schemas y approvals | El embedding técnico está documentado; el entitlement de terceros con Plus/Pro no está claro | `UNRESOLVED — APP SERVER`  |
+| Claude Code oficial e inalterado | Login del propio usuario dentro del cliente oficial                         | `-p`, JSON/JSONL, schema, cancelación, sesiones y budgets           | Anthropic permite ejecutarlo en productos; el límite frente al Agent SDK necesita aclaración | `UNRESOLVED — CLAUDE CODE` |
+| Claude Platform mediante `ant`   | OAuth de Claude Console para desarrollo/scripting local; WIF para workloads | CLI/API JSON; el contrato de streaming/recovery aún no basta        | La API admite productos; competencia/reventa necesita aclaración para un orquestador         | `UNRESOLVED — PLATFORM`    |
+| Gemini en Vertex AI              | OAuth/ADC/IAM con proyecto Cloud, billing y cliente OAuth propio            | API/SDK, streaming, schema JSON y function calling                  | Customer Applications están contempladas, con Cloud/IAM/OAuth propios                        | `CONDITIONAL — ENTERPRISE` |
+| Gemini CLI/Code Assist OAuth     | Login Google del producto oficial                                           | La CLI tiene modos agentic/estructurados                            | Google prohíbe que software de terceros use/piggyback ese OAuth/backend                      | `REJECTED`                 |
+| Agent SDK con OAuth Claude.ai    | Login de suscripción embebido en una app                                    | SDK Python/TypeScript                                               | Anthropic exige aprobación previa para ofrecer login o rate limits                           | `REJECTED`                 |
 
 “Condicional” significa que existe una ruta técnica oficial, no que Trivergence
 tenga autorización jurídica para distribuirla. Se requiere aprobación humana
@@ -82,48 +84,75 @@ antigua etiqueta `CONDITIONAL` para habilitar ninguna capability.
 
 ## 2. Claude/Anthropic
 
-### Ruta sin claves
+> Esta sección refleja el gate M5-A2 de 2026-09-15 y reemplaza la evaluación
+> condicional original. Véase el [expediente completo](claude-gate.md).
 
-El nuevo CLI oficial `ant` permite `ant auth login` mediante OAuth de Claude
-Console sin crear API key. El token queda limitado a un workspace y está
-destinado a desarrollo y scripting en la propia máquina. La documentación
-también permite scripts que usan esas credenciales, aunque Trivergence no debe
-imprimirlas ni copiarlas. Para servidores, WIF intercambia identidad de AWS,
-Google Cloud, Azure u otro IdP por tokens breves.
+### Ruta sin claves principal
+
+Anthropic documenta `claude -p` para automatización con JSON, JSONL, schema,
+cancelación, sesiones y budgets. También permite ejecutar Claude Code publicado
+e inalterado dentro de productos si cada usuario autentica y paga directamente
+su uso. Pro, Max, Team y Enterprise pueden utilizar hoy sus límites de
+suscripción; Free no incluye Claude Code.
+
+Trivergence no puede ofrecer su propio login Claude.ai: solo podría lanzar una
+instalación oficial externa y dejar autenticación, refresh y credenciales en el
+cliente oficial. La documentación del Agent SDK exige aprobación previa para
+incorporar login o rate limits Claude.ai en una app. Esa frontera exacta debe
+confirmarse antes de un spike.
+
+### Alternativa Claude Platform
+
+El CLI oficial `ant` permite OAuth de Claude Console sin API key manual y está
+destinado a scripting local. Usa la API y facturación separada de Claude.ai. WIF
+cubre workloads empresariales no interactivos.
 
 Fuentes oficiales:
 
 - [Autenticación de ant CLI](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/authentication)
 - [Scripting con ant CLI](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/scripting)
 - [Autenticación de Claude Platform](https://platform.claude.com/docs/en/manage-claude/authentication)
+- [Legal y compliance de Claude Code](https://code.claude.com/docs/en/legal-and-compliance)
+- [Automatización de Claude Code](https://code.claude.com/docs/en/headless)
+- [Agent SDK](https://code.claude.com/docs/en/agent-sdk)
 - [Commercial Terms](https://www.anthropic.com/legal/commercial-terms)
 - [Consumer Terms](https://www.anthropic.com/legal/consumer-terms)
 - [Usage Policy](https://www.anthropic.com/legal/aup)
 
 ### Separación obligatoria
 
-- `ant` + Claude Console OAuth: candidato comercial condicionado.
+- Claude Code oficial externo: candidato condicionado; no se leen sus tokens.
+- Agent SDK con login Claude.ai propio: rechazado sin aprobación previa.
+- `ant` + Claude Console OAuth: alternativa API condicionada.
 - WIF/Bedrock/Vertex: candidato empresarial condicionado.
-- Claude Code con Free/Pro/Max: no es un puente de autenticación. Los términos
-  de consumo prohíben acceso automatizado/no humano salvo API key o permiso
-  explícito; Trivergence nunca lee ni reutiliza su sesión.
 
 ### Capacidades defendibles
 
-Messages/streaming, JSON estricto, propuestas `tool_use`, conteo y modelos. Las
-tools son ejecutadas únicamente por Runtime tras plan/policy/approval. Managed
-Agents, Files, Batches, code execution, MCP, server tools y features beta
-requieren gates separados por retención y autoridad.
+Solo inferencia estructurada sin tools: `--safe-mode`, `--restricted`, tools y
+MCP vacíos, configuración cerrada, stdin y JSONL. El Runtime conserva toda la
+autoridad. El agent loop, comandos, archivos, web, hooks, plugins, memoria,
+subagentes y permisos nativos quedan fuera.
 
-### Riesgo contractual
+### Resultado actual
 
-Commercial Terms exige revisión humana/apropiada, aviso de inexactitud y
-cumplimiento de Usage Policy; restringe productos competidores y reventa salvo
-aprobación. La documentación permite scripting local pero no afirma
-explícitamente que un tercero pueda distribuir un wrapper comercial de `ant`. Se
-requiere confirmación escrita sobre ese uso, no-reventa/no-competencia y la
-licencia de redistribución. La primera versión exigiría instalación y login del
-usuario, sin bundlear el CLI.
+`UNRESOLVED`. Claude Code ofrece la vía oficial más alineada con el producto,
+pero no recupera el mismo turn interrumpido y debe aclararse si usar el binario
+como provider cae dentro del permiso de ejecución en productos sin convertirse
+en un login/rate-limit propio del Agent SDK. No se autoriza adapter ni spike.
+
+### Comparación M5-A: Codex frente a la mejor vía Claude
+
+| Criterio                | Codex App Server                                         | Claude Code oficial e inalterado                               |
+| ----------------------- | -------------------------------------------------------- | -------------------------------------------------------------- |
+| Technical               | Experimental; protocolo rico; recovery bloqueado         | `-p`, JSONL y cancel documentados; recovery bloqueado          |
+| Authentication          | Login ChatGPT gestionado; entitlement de terceros dudoso | Login gestionado por Claude Code; no se expone OAuth           |
+| Contractual             | Uso Plus/Pro por terceros sin confirmación inequívoca    | Ejecución en productos permitida; límite Agent SDK por aclarar |
+| Distribution            | Código Apache; interfaz no soportada en producción       | Binario propietario inalterado; instalación externa            |
+| Recovery                | `BLOCKED`                                                | `BLOCKED`                                                      |
+| Conformance             | 12 `ADAPTABLE`, 2 `BLOCKED`; 0 `PASS` real               | 5 `PASSABLE`, 7 `ADAPTABLE`, 2 `BLOCKED`; 0 `PASS`             |
+| Cost model              | Entitlement ChatGPT no aclarado para este producto       | Límites propios del plan; Console/API alternativa separada     |
+| Production maturity     | App Server experimental                                  | Cliente oficial con interfaz programática documentada          |
+| Third-party suitability | Técnica documentada; gate de cuenta/contrato abierto     | Ejecutable en productos; OAuth propio/SDK requiere aprobación  |
 
 ## 3. Gemini/Google
 
@@ -180,31 +209,18 @@ Gemini Developer API/AI Studio no se recomienda: su OAuth actual y la referencia
 general de generación no son suficientemente consistentes para aprobar una app
 de producción sin confirmación oficial.
 
-## Comparación ponderada
-
-Escala 1–5; es una evaluación arquitectónica, no una conclusión legal.
-
-| Criterio                            | Codex App Server | Claude `ant` | Gemini Vertex |
-| ----------------------------------- | ---------------: | -----------: | ------------: |
-| Integración local sin API key       |                5 |            4 |             2 |
-| Protocolo estructurado/versionable  |                5 |            4 |             5 |
-| Encaje con approvals de Trivergence |                5 |            4 |             4 |
-| Claridad para producto de terceros  |                4 |            3 |             4 |
-| Onboarding/coste operativo          |                5 |            4 |             2 |
-| Separación de credenciales          |                4 |            4 |             3 |
-| Total orientativo                   |           **28** |       **23** |        **20** |
-
 ## Recomendación
 
-Preparar primero `CodexAppServerCandidateAdapter`, exclusivamente inerte. Es la
-ruta más alineada con el producto: el proveedor ofrece una interfaz para un
-cliente propio, schema por versión, eventos y approvals que pueden traducirse a
-propuestas. Claude Platform mediante `ant` es el segundo candidato y Gemini
-Vertex el camino empresarial de Google.
+No preparar todavía ningún adapter externo. Codex App Server y Claude Code
+oficial permanecen `UNRESOLVED` por bloqueos distintos; Gemini Vertex conserva
+su evaluación empresarial condicionada de 2026-08-07. La alternativa Claude
+Platform mediante `ant` sigue siendo viable si el producto acepta billing API.
 
-La recomendación no aprueba el gate. Codex pasa a implementación solo cuando
-existan confirmación contractual para los tipos de cuenta soportados, revisor
-legal identificado, attestation vigente, fixtures y trust-store de release.
+El siguiente paso para Codex es obtener respuesta oficial a sus preguntas
+abiertas. Para Claude es confirmar la frontera entre ejecutar Claude Code
+inalterado y ofrecer login mediante Agent SDK, además de resolver recovery. Solo
+entonces corresponde autorizar un spike aislado del candidato que cierre todos
+sus gates obligatorios.
 
 ## Pendientes comunes antes de cualquier `ENABLED`
 

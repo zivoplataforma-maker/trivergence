@@ -29,6 +29,22 @@ Se creó el expediente, las preguntas para OpenAI y el threat model específico.
 No se creó adapter ni spike, no se habilitó Codex, no cambió el trust store y M5
 permanece `PARTIAL`.
 
+## M5-A2 — Gate de Claude/Anthropic (2026-09-15)
+
+Resultado global: `UNRESOLVED`. Anthropic permite ejecutar Claude Code oficial e
+inalterado dentro de productos y documenta `claude -p` con JSONL, cancelación,
+sesiones y budgets. El login permanece en el cliente oficial: Trivergence no
+ofrece OAuth ni lee credenciales. Pro, Max, Team y Enterprise pueden consumir
+hoy sus límites de suscripción; Free no incluye Claude Code. Claude Platform
+mediante `ant` queda como alternativa sin clave manual y billing API separado.
+
+El gate técnico sigue abierto por la ausencia de recovery compatible con dos
+comprobaciones. El contractual sigue abierto porque Agent SDK prohíbe ofrecer
+login/rate limits Claude.ai sin aprobación y debe confirmarse que el uso exacto
+como provider cae dentro del permiso para ejecutar el binario oficial. Se
+crearon expediente, preguntas y threat model; no se creó adapter ni spike, no se
+habilitó Claude, no cambió el trust store y M5 permanece `PARTIAL`.
+
 ## P2 — product hardening y preparación de M5 (2026-09-15)
 
 Estado: `DONE` para el alcance interno P2. Los gates locales finales y la
@@ -264,9 +280,9 @@ No implica cierre de M5 ni M7.
   no es una release distribuible y no existe canal de actualización habilitado.
 - El centro de aprobación está validado con el Reference Provider local; aún
   falta validarlo contra la interfaz real de un proveedor después de su gate.
-- Ningún proveedor externo está integrado o aprobado. Codex App Server es solo
-  el primer candidato condicionado; Claude `ant` y Gemini Vertex conservan gates
-  separados.
+- Ningún proveedor externo está integrado o aprobado. Codex App Server y Claude
+  Code oficial tienen gates `UNRESOLVED`; Claude Platform mediante `ant` es una
+  alternativa y Gemini Vertex conserva su gate empresarial separado.
 - No se ha realizado revisión legal ni de marca.
 - No hay firma Authenticode, evidencia de Windows 10/11 limpios ni instalador
   byte-reproducible; por ello M7 permanece `PARTIAL`.
