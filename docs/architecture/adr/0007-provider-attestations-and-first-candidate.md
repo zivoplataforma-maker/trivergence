@@ -3,6 +3,14 @@
 Estado: aceptado; activación pendiente de gate  
 Fecha: 2026-08-07
 
+Actualización 2026-09-15: el gate M5-A de Codex App Server resultó `UNRESOLVED`.
+La preferencia de candidato se conserva, pero la frase “interfaz oficial para
+productos propios” expresa disponibilidad técnica, no madurez para producción ni
+autorización contractual para Plus/Pro. Tampoco se encontró una primitive de
+recovery de turn equivalente al checkpoint de Trivergence. No existe adapter,
+dispatcher ni attestation confiable. Véase
+[el expediente M5-A](../../providers/codex-app-server-gate.md).
+
 ## Contexto
 
 Los proveedores cambian interfaces, autenticación y términos sin compartir un
@@ -36,8 +44,9 @@ contractual.
   code; nunca lectura de `auth.json`;
 - sesión local atendida por el usuario, sin background ni credenciales
   compartidas;
-- transporte `stdio`; WebSocket, auth tokens externos experimentales y dynamic
-  tools quedan fuera;
+- transporte futuro `stdio`; el comando App Server y WebSocket están
+  documentados como experimentales/no soportados para producción, mientras que
+  auth tokens externos experimentales y dynamic tools quedan fuera;
 - directorio aislado, sin tools con efectos y con toda solicitud de
   comando/archivo/red rechazada y convertida, cuando sea posible, en propuesta
   para el Orchestration Engine;
@@ -54,6 +63,8 @@ pueden incorporarse después mediante sus propias attestations sin cambiar el
 núcleo.
 
 El expediente recomienda Codex, pero mantiene el estado contractual/legal en
-`pending` hasta obtener dictamen y, para cuentas personales, confirmación
-escrita sobre la convivencia entre App Server y la restricción de extracción
-programática de los términos de consumo.
+`pending` y el gate global `UNRESOLVED` hasta obtener dictamen y, para cuentas
+personales, confirmación escrita sobre la convivencia entre App Server y la
+restricción de extracción programática de los términos de consumo. La futura
+implementación también debe resolver las comprobaciones de recovery sin reducir
+las garantías de conformidad.

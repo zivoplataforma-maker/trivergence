@@ -16,6 +16,19 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 | M6 — workflows, agentes y memoria   | DONE    | Pipeline local de cinco pasos, budgets, provenance, memoria, evaluación, auditoría, E2E y build verificados.       |
 | M7 — hardening/distribución Windows | PARTIAL | Controles y paquete unsigned verificados localmente; faltan reproducibilidad NSIS, firma y matriz limpia Win10/11. |
 
+## M5-A — Gate definitivo de Codex App Server (2026-09-15)
+
+Resultado global: `UNRESOLVED`. La interfaz técnica oficial, `stdio`, schemas,
+streaming, cancelación y login gestionado son candidatos viables, pero el
+comando figura experimental/no soportado para producción y no existe una
+respuesta contractual inequívoca para una aplicación open-source de terceros con
+cuentas Plus/Pro. Tampoco hay recovery documentado de un turn desde el
+checkpoint exigido por dos de las 14 comprobaciones.
+
+Se creó el expediente, las preguntas para OpenAI y el threat model específico.
+No se creó adapter ni spike, no se habilitó Codex, no cambió el trust store y M5
+permanece `PARTIAL`.
+
 ## P2 — product hardening y preparación de M5 (2026-09-15)
 
 Estado: `DONE` para el alcance interno P2. Los gates locales finales y la

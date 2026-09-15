@@ -4,18 +4,26 @@ Estado: investigación completa; ninguna integración aprobada ni habilitada
 Corte de fuentes: 2026-08-07  
 Renovación obligatoria: 2026-09-07 o ante cualquier cambio de fuente
 
+> Actualización Codex 2026-09-15: el expediente M5-A reemplaza la evaluación de
+> Codex de este comparativo. El resultado actual es `UNRESOLVED`, no
+> `CONDITIONAL`, porque el comando figura experimental/no soportado para
+> producción, falta claridad contractual para Plus/Pro y existe un gap de
+> recovery. Véase [codex-app-server-gate.md](codex-app-server-gate.md). Las
+> evaluaciones de Claude y Gemini conservan su fecha original y no se
+> reabrieron.
+
 Este expediente es análisis de producto y riesgo, no asesoramiento legal. Solo
 un revisor jurídico autorizado puede aprobar la columna legal del gate.
 
 ## Dictamen ejecutivo
 
-| Proveedor/ruta                 | Autenticación oficial sin API key                                                           | Interfaz estructurada                                               | Aplicación de terceros                                                                     | Gate actual                |
-| ------------------------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------- |
-| Codex App Server               | ChatGPT browser/device code; access token Business/Enterprise para automatización confiable | JSON-RPC sobre `stdio`, streaming, cancelación, schemas y approvals | La documentación indica usarlo para integración profunda en un producto propio             | `CONDITIONAL — PREFERRED`  |
-| Claude Platform mediante `ant` | OAuth de Claude Console para desarrollo/scripting local; WIF para workloads                 | CLI/API JSON, streaming, Messages, strict output y tool proposals   | Scripting está permitido; embedding/distribución por un tercero no está dicho expresamente | `CONDITIONAL — SECOND`     |
-| Gemini en Vertex AI            | OAuth/ADC/IAM con proyecto Cloud, billing y cliente OAuth propio                            | API/SDK, streaming, schema JSON y function calling                  | Customer Applications están contempladas, con Cloud/IAM/OAuth propios                      | `CONDITIONAL — ENTERPRISE` |
-| Gemini CLI/Code Assist OAuth   | Login Google del producto oficial                                                           | La CLI tiene modos agentic/estructurados                            | Google prohíbe que software de terceros use/piggyback ese OAuth/backend                    | `REJECTED`                 |
-| Claude Code Pro/Max OAuth      | Login de suscripción dentro de Claude Code                                                  | `-p`, JSON/stream-json                                              | Consumer Terms bloquean automatización salvo API key o permiso explícito                   | `REJECTED`                 |
+| Proveedor/ruta                 | Autenticación oficial sin API key                                           | Interfaz estructurada                                               | Aplicación de terceros                                                                       | Gate actual                |
+| ------------------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------- |
+| Codex App Server               | ChatGPT browser/device code gestionado por Codex                            | JSON-RPC sobre `stdio`, streaming, cancelación, schemas y approvals | El embedding técnico está documentado; el entitlement de terceros con Plus/Pro no está claro | `UNRESOLVED — PREFERRED`   |
+| Claude Platform mediante `ant` | OAuth de Claude Console para desarrollo/scripting local; WIF para workloads | CLI/API JSON, streaming, Messages, strict output y tool proposals   | Scripting está permitido; embedding/distribución por un tercero no está dicho expresamente   | `CONDITIONAL — SECOND`     |
+| Gemini en Vertex AI            | OAuth/ADC/IAM con proyecto Cloud, billing y cliente OAuth propio            | API/SDK, streaming, schema JSON y function calling                  | Customer Applications están contempladas, con Cloud/IAM/OAuth propios                        | `CONDITIONAL — ENTERPRISE` |
+| Gemini CLI/Code Assist OAuth   | Login Google del producto oficial                                           | La CLI tiene modos agentic/estructurados                            | Google prohíbe que software de terceros use/piggyback ese OAuth/backend                      | `REJECTED`                 |
+| Claude Code Pro/Max OAuth      | Login de suscripción dentro de Claude Code                                  | `-p`, JSON/stream-json                                              | Consumer Terms bloquean automatización salvo API key o permiso explícito                     | `REJECTED`                 |
 
 “Condicional” significa que existe una ruta técnica oficial, no que Trivergence
 tenga autorización jurídica para distribuirla. Se requiere aprobación humana
@@ -67,6 +75,10 @@ anula la otra para todo tipo de cuenta. Antes de distribuir:
    automatización desatendida, access tokens;
 4. Trivergence no comparte, exporta ni inspecciona `auth.json` y no expone el
    servicio en entornos públicos/no confiables.
+
+Esta conclusión queda reemplazada por el
+[gate M5-A de 2026-09-15](codex-app-server-gate.md). No debe utilizarse la
+antigua etiqueta `CONDITIONAL` para habilitar ninguna capability.
 
 ## 2. Claude/Anthropic
 

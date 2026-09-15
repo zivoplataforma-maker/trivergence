@@ -144,6 +144,19 @@ Claude Platform mediante `ant` queda segundo y Gemini sobre Vertex AI como ruta
 empresarial. Gemini CLI OAuth y Claude Code Pro/Max OAuth están rechazados para
 automatización de terceros.
 
+### M5-A — resultado del gate Codex App Server (2026-09-15)
+
+`UNRESOLVED`. OpenAI documenta App Server para embedding técnico en productos,
+pero califica el comando como experimental/no soportado para producción y falta
+confirmación explícita para el uso de terceros con Plus/Pro frente a los Terms
+of Use. También falta una primitive idempotente compatible con las pruebas
+`recovery` e `interrupted_recovery`.
+
+Siguiente paso mínimo: enviar las preguntas de
+`docs/providers/codex-app-server-open-questions.md` a OpenAI. Solo después de
+una respuesta citable se fija una versión/schema, se diseña recovery y se
+autoriza un spike aislado. Codex continúa deshabilitado y M5 sigue `PARTIAL`.
+
 ## M6 — workflows, agentes y memoria
 
 Estado: `DONE`; verificado el 2026-09-10 con capacidades locales y el Reference
