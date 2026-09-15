@@ -45,6 +45,28 @@ como provider cae dentro del permiso para ejecutar el binario oficial. Se
 crearon expediente, preguntas y threat model; no se creó adapter ni spike, no se
 habilitó Claude, no cambió el trust store y M5 permanece `PARTIAL`.
 
+## M5-A3 — Gate de Google/Gemini (2026-09-15)
+
+Resultado global: `UNRESOLVED`. Gemini CLI con login Google y Gemini Code Assist
+se rechazan como mecanismos de provider: Google prohíbe el piggyback del OAuth
+del CLI, el entitlement no es transferible y el acceso consumidor
+Individual/Google AI Pro/Ultra terminó el 18 de junio de 2026. No se leyeron ni
+reutilizaron credenciales.
+
+Gemini Developer API Interactions es una API oficial de terceros y documenta
+streaming, background execution, cancelación, interaction IDs y reconexión;
+queda `CONDITIONALLY_APPROVED` solo como alternativa futura porque exige
+key/auth key, proyecto y billing separados. No se añadió soporte de keys ni se
+autorizó su implementación.
+
+Vertex AI mediante ADC/OAuth/IAM y proyecto facturable del usuario es la mejor
+ruta oficial sin API key, pero permanece `UNRESOLVED`: no está demostrada la
+recuperación exacta de inferencia online ni la disponibilidad de Interactions
+background bajo Vertex/ADC, y falta aprobar la frontera de custodia ADC. Se
+crearon expediente, preguntas y threat model. No hubo adapter, spike, cambios de
+ProviderAdapter/trust store ni activación; Reference Provider continúa siendo el
+único ejecutable. M5 y M7 permanecen `PARTIAL`.
+
 ## P2 — product hardening y preparación de M5 (2026-09-15)
 
 Estado: `DONE` para el alcance interno P2. Los gates locales finales y la

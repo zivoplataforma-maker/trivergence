@@ -11,7 +11,10 @@ Renovación obligatoria: 2026-09-07 o ante cualquier cambio de fuente
 > recovery. Véase [codex-app-server-gate.md](codex-app-server-gate.md). La
 > evaluación M5-A2 de Claude también fue reemplazada el 2026-09-15: la mejor
 > ruta es ejecutar Claude Code oficial e inalterado, pero su resultado global
-> sigue `UNRESOLVED`. Gemini conserva su fecha original y no se reabrió.
+> sigue `UNRESOLVED`. La evaluación M5-A3 de Google reemplaza ahora la columna
+> Gemini: Vertex AI mediante ADC es la mejor ruta sin key, pero continúa
+> `UNRESOLVED` por recovery y frontera de credenciales. Véase
+> [google-gemini-gate.md](google-gemini-gate.md).
 
 Este expediente es análisis de producto y riesgo, no asesoramiento legal. Solo
 un revisor jurídico autorizado puede aprobar la columna legal del gate.
@@ -23,7 +26,7 @@ un revisor jurídico autorizado puede aprobar la columna legal del gate.
 | Codex App Server                 | ChatGPT browser/device code gestionado por Codex                            | JSON-RPC sobre `stdio`, streaming, cancelación, schemas y approvals | El embedding técnico está documentado; el entitlement de terceros con Plus/Pro no está claro | `UNRESOLVED — APP SERVER`  |
 | Claude Code oficial e inalterado | Login del propio usuario dentro del cliente oficial                         | `-p`, JSON/JSONL, schema, cancelación, sesiones y budgets           | Anthropic permite ejecutarlo en productos; el límite frente al Agent SDK necesita aclaración | `UNRESOLVED — CLAUDE CODE` |
 | Claude Platform mediante `ant`   | OAuth de Claude Console para desarrollo/scripting local; WIF para workloads | CLI/API JSON; el contrato de streaming/recovery aún no basta        | La API admite productos; competencia/reventa necesita aclaración para un orquestador         | `UNRESOLVED — PLATFORM`    |
-| Gemini en Vertex AI              | OAuth/ADC/IAM con proyecto Cloud, billing y cliente OAuth propio            | API/SDK, streaming, schema JSON y function calling                  | Customer Applications están contempladas, con Cloud/IAM/OAuth propios                        | `CONDITIONAL — ENTERPRISE` |
+| Gemini en Vertex AI              | OAuth/ADC/IAM con proyecto Cloud y billing del usuario                      | API/SDK, streaming, schema JSON y function calling                  | Customer Applications contempladas; exact recovery no demostrado                             | `UNRESOLVED — VERTEX`      |
 | Gemini CLI/Code Assist OAuth     | Login Google del producto oficial                                           | La CLI tiene modos agentic/estructurados                            | Google prohíbe que software de terceros use/piggyback ese OAuth/backend                      | `REJECTED`                 |
 | Agent SDK con OAuth Claude.ai    | Login de suscripción embebido en una app                                    | SDK Python/TypeScript                                               | Anthropic exige aprobación previa para ofrecer login o rate limits                           | `REJECTED`                 |
 
@@ -156,6 +159,9 @@ en un login/rate-limit propio del Agent SDK. No se autoriza adapter ni spike.
 
 ## 3. Gemini/Google
 
+> Esta sección refleja el gate M5-A3 de 2026-09-15 y reemplaza la evaluación
+> condicional original. Véase el [expediente completo](google-gemini-gate.md).
+
 ### Rutas rechazadas
 
 Google afirma que software de terceros que accede al servicio detrás de Gemini
@@ -168,16 +174,16 @@ Fuentes oficiales:
 - [Gemini CLI: licencia, términos y privacidad](https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/tos-privacy.md)
 - [Gemini CLI FAQ](https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/faq.md)
 
-### Ruta sin claves admitida
+### Mejor ruta sin key
 
 Gemini sobre Vertex AI puede usar OAuth/ADC/IAM y bearer tokens sin API key. El
 usuario aporta un proyecto Google Cloud con billing, Vertex habilitado y rol
-mínimo. Para una app Desktop pública, la ruta estándar exigiría OAuth client
-propio, navegador externo, Authorization Code + PKCE, callback loopback, scopes
-mínimos, verificación/branding y vault del sistema. Eso contradice la frontera
-actual de Trivergence, que no custodia tokens: Vertex queda bloqueado hasta un
-ADR de credenciales o una arquitectura empresarial WIF/ADC aislada. “Sign in
-with Google” por sí solo autentica identidad y no autoriza Vertex.
+mínimo. ADC creado por `gcloud auth application-default login` evita que
+Trivergence capture contraseña o copie tokens, pero el proceso sigue usando una
+credencial renovable local. OAuth propio requeriría navegador externo, PKCE,
+callback loopback, scopes mínimos, verificación/branding y vault. Vertex queda
+abierto hasta un ADR de credenciales y una primitive de recovery exacto. “Sign
+in with Google” por sí solo autentica identidad y no autoriza Vertex.
 
 Fuentes oficiales:
 
@@ -189,14 +195,23 @@ Fuentes oficiales:
 - [Function calling](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/function-calling)
 - [Structured JSON](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/samples/generativeaionvertexai-gemini-controlled-generation-response-schema-2)
 
-### Capacidades defendibles
+### API alternativa con credencial
+
+Gemini Developer API es una API oficial para terceros y su Interactions API GA
+documenta interaction IDs, background execution, cancelación, polling y
+reconexión por event ID. Es la única ruta Google evaluada que satisface
+documentalmente exact recovery, pero exige API key/auth key y proyecto/billing
+separados. Queda `CONDITIONALLY_APPROVED` solo como extensión futura fuera del
+flujo principal; no se autoriza implementación ni UX de keys.
+
+### Capacidades defendibles de Vertex
 
 Generación/streaming de texto, salida JSON con schema, multimodal admitido por
 modelo y propuestas de function calls. Grounding Search/Maps, code execution,
 computer use, agents gestionados, tuning y embeddings quedan fuera del primer
 gate por términos, retención o autoridad adicional.
 
-### Riesgo contractual
+### Riesgo contractual y técnico
 
 Vertex contempla Customer Applications y trata generated output como Customer
 Data; no usa Customer Data para training sin permiso. No obstante, Trivergence
@@ -205,22 +220,41 @@ competidor” y que BYO Cloud Project no es reventa/sublicencia. También requie
 OAuth verification, privacy/terms propios, age gate de 18 años, IAM mínimo, cost
 preview y matriz de regiones.
 
-Gemini Developer API/AI Studio no se recomienda: su OAuth actual y la referencia
-general de generación no son suficientemente consistentes para aprobar una app
-de producción sin confirmación oficial.
+La inferencia online de Vertex no documenta operation IDs, idempotencia o
+reconnect de la misma ejecución. Reenviar contexto crea otra inferencia. Tampoco
+se ha confirmado que Interactions API background esté disponible bajo
+Vertex/ADC. Por eso Vertex es `UNRESOLVED`, no `CONDITIONAL` ni `APPROVED`.
+
+### Matriz objetiva de los tres ecosistemas
+
+| Criterio                   | Codex App Server                                                  | Claude Code oficial                                      | Mejor vía Google: Vertex AI + ADC                             |
+| -------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------- |
+| Technical maturity         | Protocolo rico, comando experimental/no soportado para producción | Headless/JSONL documentado                               | API Cloud de producción; recovery online incompleto           |
+| Third-party suitability    | Embedding técnico documentado; entitlement abierto                | Ejecución en productos documentada; frontera SDK abierta | Customer Applications y SDK/REST documentados                 |
+| Authentication             | Login ChatGPT gestionado; Plus/Pro por confirmar                  | Login gestionado en CLI; Free no incluido                | ADC/OAuth/IAM del usuario y proyecto Cloud                    |
+| Subscription compatibility | ChatGPT entitlement sin confirmación para este caso               | Pro/Max/Team/Enterprise en cliente oficial               | Ninguna: Google AI Plus/Pro/Ultra no paga Vertex              |
+| Contractual clarity        | `UNRESOLVED`                                                      | `UNRESOLVED`                                             | API Cloud clara; BYO-project/multi-provider requiere revisión |
+| Streaming                  | Documentado                                                       | JSONL documentado                                        | `streamGenerateContent` documentado                           |
+| Cancellation               | Documentada                                                       | Señal/proceso documentado                                | Abort adaptable; estado remoto online no demostrado           |
+| Recovery                   | `BLOCKED`                                                         | `BLOCKED`                                                | `BLOCKED` para inferencia online exacta                       |
+| Conformance                | 12 `ADAPTABLE`, 2 `BLOCKED`; 0 `PASS`                             | 5 `PASSABLE`, 7 `ADAPTABLE`, 2 `BLOCKED`; 0 `PASS`       | 1 `PASSABLE`, 11 `ADAPTABLE`, 2 `BLOCKED`; 0 `PASS`           |
+| Distribution               | Código Apache; interfaz experimental                              | Binario propietario, instalación externa                 | SDK Apache/REST; gcloud externo                               |
+| Cost/billing               | Entitlement ChatGPT por aclarar                                   | Plan propio; Platform separada                           | Proyecto Cloud del usuario, PayGo/quota                       |
+| Security boundary          | Proceso oficial + app server                                      | Proceso oficial inalterado                               | Adapter → Google Auth/ADC → endpoint Cloud allowlisted        |
 
 ## Recomendación
 
-No preparar todavía ningún adapter externo. Codex App Server y Claude Code
-oficial permanecen `UNRESOLVED` por bloqueos distintos; Gemini Vertex conserva
-su evaluación empresarial condicionada de 2026-08-07. La alternativa Claude
-Platform mediante `ant` sigue siendo viable si el producto acepta billing API.
+No preparar todavía ningún adapter externo. Codex App Server, Claude Code
+oficial y Vertex AI permanecen `UNRESOLVED` por bloqueos distintos. Gemini API
+Interactions es técnicamente el candidato Google con mejor recovery, pero exige
+key/auth key y billing API separados, por lo que no satisface el flujo
+principal.
 
-El siguiente paso para Codex es obtener respuesta oficial a sus preguntas
-abiertas. Para Claude es confirmar la frontera entre ejecutar Claude Code
-inalterado y ofrecer login mediante Agent SDK, además de resolver recovery. Solo
-entonces corresponde autorizar un spike aislado del candidato que cierre todos
-sus gates obligatorios.
+El siguiente paso Google es enviar
+`docs/providers/google-gemini-open-questions.md`, sobre todo para confirmar
+Interactions background/reconnect en Vertex con ADC y la arquitectura BYO
+project. Solo después de respuestas citables, ADR de credenciales y revisión
+legal corresponde reconsiderar un spike aislado.
 
 ## Pendientes comunes antes de cualquier `ENABLED`
 

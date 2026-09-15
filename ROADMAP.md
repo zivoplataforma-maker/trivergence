@@ -173,6 +173,22 @@ Siguiente paso mínimo: enviar `docs/providers/claude-open-questions.md` a
 Anthropic. Claude continúa deshabilitado, el Reference Provider sigue siendo el
 único ejecutable y M5 permanece `PARTIAL`.
 
+### M5-A3 — resultado del gate Google/Gemini (2026-09-15)
+
+`UNRESOLVED`. Gemini CLI con OAuth de consumidor y Gemini Code Assist quedan
+`REJECTED` como provider routes. Gemini Developer API Interactions queda
+`CONDITIONALLY_APPROVED` solo como alternativa futura con key/auth key y billing
+propios; no forma parte del flujo principal sin keys.
+
+Vertex AI + ADC/OAuth/IAM sobre el proyecto Cloud del usuario es la mejor ruta
+Google sin API key. No se autoriza un spike porque la inferencia online no
+documenta exact recovery y no se confirmó Interactions background/reconnect bajo
+Vertex/ADC; también falta el ADR de custodia/aislamiento ADC y revisión BYO
+project. Siguiente paso mínimo: enviar
+`docs/providers/google-gemini-open-questions.md` y exigir respuestas citables.
+Gemini continúa deshabilitado, Reference Provider sigue siendo el único
+ejecutable y M5/M7 permanecen `PARTIAL`.
+
 ## M6 — workflows, agentes y memoria
 
 Estado: `DONE`; verificado el 2026-09-10 con capacidades locales y el Reference
