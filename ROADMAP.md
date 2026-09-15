@@ -6,8 +6,10 @@ ejecuta y conecta subsistemas.
 
 ## P2 — product hardening y preparación de M5
 
-Estado: `READY_FOR_CI` para el alcance interno de consolidación, sin activar
-conectores. Los gates locales pasaron; el cierre exige CI Windows verde.
+Estado: `DONE` para el alcance interno de consolidación, sin activar conectores.
+Los gates locales y la
+[CI Windows 34966426691](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34966426691)
+pasaron.
 
 - recorrido Objective-first visible y unido a los estados reales de Strategy,
   preflight, aprobación, Runtime, postflight y evidencia;

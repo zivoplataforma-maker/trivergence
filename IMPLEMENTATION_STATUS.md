@@ -18,8 +18,9 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 
 ## P2 — product hardening y preparación de M5 (2026-09-15)
 
-Estado: `READY_FOR_CI` para el alcance interno P2. Los gates locales finales
-pasaron; no se cambiará a `DONE` hasta obtener CI Windows verde. No habilita
+Estado: `DONE` para el alcance interno P2. Los gates locales finales y la
+[CI Windows 34966426691](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34966426691)
+del commit `b77af20c79806e2b9fd9806bca1ab7b3fc8a2e64` pasaron. No habilita
 proveedores ni cambia M5/M7.
 
 - Auditoría desde `6f81f26`: línea base sin caché, E2E, smoke, seguridad y SBOM
@@ -44,8 +45,8 @@ proveedores ni cambia M5/M7.
 
 Evidencia local final: formato y lint; build y typecheck de 12 proyectos; **142
 tests**; Electron E2E y smoke; auditoría sin vulnerabilidades conocidas; SBOM
-CycloneDX verificado con 451 componentes. Falta registrar el run de CI Windows
-sobre el commit de esta entrega.
+CycloneDX verificado con 451 componentes. CI Windows repitió instalación limpia,
+gates sin cache, E2E, smoke y seguridad con resultado `success`.
 
 ## P1 transversal hacia v1.0 (2026-09-14)
 

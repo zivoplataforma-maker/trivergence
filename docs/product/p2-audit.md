@@ -58,7 +58,11 @@ fixture local, no una IA ni autorización para terceros.
 Tras los cambios pasaron formato, lint, build y typecheck de los 12 proyectos,
 142 tests, Electron E2E, smoke, auditoría de dependencias y verificación del
 SBOM CycloneDX de 451 componentes. No se detectaron vulnerabilidades conocidas.
-El estado permanece `READY_FOR_CI` hasta validar el commit en Windows CI.
+La
+[CI Windows 34966426691](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34966426691)
+repitió instalación limpia, gates sin caché, E2E, smoke y seguridad sobre
+`b77af20c79806e2b9fd9806bca1ab7b3fc8a2e64` con resultado `success`. P2 queda
+`DONE` para este alcance interno; M5 y M7 permanecen `PARTIAL`.
 
 ## Puerta del próximo adaptador
 
