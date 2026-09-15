@@ -6,7 +6,7 @@
 
 **An open-source, local-first AI engineering orchestrator for Windows.**
 
-Trivergence is being built so people can describe **what they want to achieve** while the system decides how agents, tools, memory, workflows and approved AI providers should work together — with policy, human approval, evaluation and evidence around every execution.
+Trivergence is being built so you can describe **what you want to achieve** while the system determines how agents, tools, memory, workflows and approved AI providers should work together — with policy, human approval, evaluation and evidence around execution.
 
 **Not another IDE. Not another model. The orchestration layer between your objective and the AI ecosystem.**
 
@@ -18,15 +18,15 @@ Trivergence is being built so people can describe **what they want to achieve** 
 
 ---
 
-## The idea
+## From objective to coordinated execution
 
-The AI ecosystem is becoming more capable — and more fragmented.
+AI systems are becoming more capable — and more fragmented.
 
-Different models are good at different things. Agents have different tools. CLIs have different permissions. Workflows need different levels of autonomy. Memory, context, cost, privacy and reliability all matter. Today, the human is often forced to act as the orchestration layer.
+Models specialize. Agents expose different tools. CLIs have different permissions. Workflows need different levels of autonomy. Memory, context, cost, privacy and reliability all matter. The person using them is often forced to decide which system should do what, move context between them and verify the result manually.
 
-**Trivergence wants to change that.**
+**Trivergence is building the coordination layer.**
 
-You start with an objective. Trivergence analyzes the available capabilities, compares possible routes, creates an explicit plan, applies policy and approval gates, coordinates execution, evaluates the result and preserves evidence of what happened.
+You start with an objective. Trivergence analyzes the capabilities available to it, compares viable routes, creates an explicit plan, applies policy and approval gates, coordinates execution, evaluates the outcome and preserves evidence of what happened.
 
 ```text
                          YOUR OBJECTIVE
@@ -64,11 +64,11 @@ You start with an objective. Trivergence analyzes the available capabilities, co
                   RESULT + PROVENANCE + AUDIT
 ```
 
-The provider is a capability behind the orchestration boundary — **not the center of the product**. Models and providers should be replaceable without redesigning Trivergence.
+A provider is a capability behind the orchestration boundary — **not the center of the product**. Models, tools and providers should be replaceable without redesigning Trivergence.
 
-## Why Trivergence?
+## Built around orchestration, not provider switching
 
-Projects such as OpenHands demonstrate the power of capable software agents; agent frameworks demonstrate collaborative and stateful workflows; research from Sakana AI explores collective and evolutionary intelligence. Trivergence takes inspiration from this broader movement while focusing on a different layer: **coordinating heterogeneous capabilities around a user objective with explicit control and evidence.**
+Trivergence is not trying to put several chat windows behind one interface. Its goal is to make coordination itself a first-class engineering problem: strategy, planning, capability discovery, permissions, execution, evaluation, recovery and provenance.
 
 The design is guided by seven principles:
 
@@ -82,25 +82,45 @@ The design is guided by seven principles:
 | **Evidence-driven** | Decisions and outcomes can be inspected without storing private chain-of-thought. |
 | **Composable** | Agents, workflows, memory, tools and providers meet behind stable contracts. |
 
+## Product preview
+
+> **Screenshots are coming next.** The desktop application and Mission Control interface already exist; we are preparing a small set of current screenshots rather than publishing mockups that could misrepresent the product.
+
+The visual experience is designed around the objective and the execution state, with technical detail available when it matters instead of turning the product into another code editor.
+
+<!--
+Future screenshot layout (replace with real captures only):
+
+<p align="center">
+  <img src="docs/assets/screenshots/mission-control.png" alt="Trivergence Mission Control" width="900" />
+</p>
+
+Suggested additional captures:
+- objective-to-plan.png
+- execution-and-approvals.png
+- providers-and-trust.png
+- history-and-evidence.png
+-->
+
 ## What exists today
 
 Trivergence is **real software under active development**, but it is not yet a finished multi-AI product.
 
-The current local build includes goal-first route selection, Strategy and Planning, Policy and Evaluation engines, an isolated Electron desktop application, workspace capabilities, a centralized provider-adapter boundary, streaming and cancellation, budgets, typed errors, approvals, recovery, workspace-scoped memory, provenance, audit evidence and a deterministic local Reference Provider used to exercise the orchestration path.
+The current local build includes objective-first route selection, Strategy and Planning, Policy and Evaluation engines, an isolated Electron desktop application, workspace capabilities, a centralized provider-adapter boundary, streaming and cancellation, budgets, typed errors, approvals, recovery, workspace-scoped memory, provenance, audit evidence and a deterministic local Reference Provider used to exercise the orchestration path.
 
 The Windows quality pipeline covers formatting, linting, types, tests, build, Electron E2E, smoke testing and security/SBOM checks. For reproducible milestone evidence, see [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 
 ### Deliberately not claimed yet
 
 - **No external AI provider is currently enabled for execution.**
-- Codex, Claude and Gemini remain behind technical/contractual trust gates.
+- Codex, Claude and Gemini remain behind technical and contractual trust gates.
 - The Reference Provider is a local conformance harness, not an external AI service.
 - The Windows installer is not yet a signed production release.
 - M5 (external providers) and M7 (distribution hardening) remain `PARTIAL`.
 
 We would rather show a smaller truthful product than advertise integrations that have not passed their gates.
 
-## The long-term experience
+## The experience we are building
 
 The intended interaction is closer to **Mission Control** than to an IDE.
 
@@ -148,7 +168,7 @@ Start with the [architecture overview](docs/architecture/overview.md), then expl
 
 Provider integration is intentionally conservative.
 
-Trivergence does **not** scrape browser sessions, extract cookies or tokens, impersonate official clients, or treat a chat subscription as generic API access. The preferred path is an official authentication/integration mechanism whose technical and contractual use is appropriate for a third-party orchestrator.
+Trivergence does **not** scrape browser sessions, extract cookies or tokens, impersonate official clients, or treat a chat subscription as generic API access. The preferred path is an official authentication or integration mechanism whose technical and contractual use is appropriate for a third-party orchestrator.
 
 Installed, authenticated, gate-authorized and enabled are separate states. A provider can therefore be visible to the system without being allowed to execute. Today, only the local Reference Provider is executable.
 
@@ -200,11 +220,11 @@ The project uses explicit policy, approval boundaries, bounded execution, local 
 
 Read [SECURITY.md](SECURITY.md), the [threat model](docs/security/threat-model.md) and [privacy documentation](docs/privacy.md).
 
-## Inspiration & independence
+## Independent by design
 
-Trivergence has been influenced by the broader open-source agent ecosystem and research into software agents, local AI workspaces and collective intelligence. That inspiration informs the problem we are exploring; it does not make Trivergence a fork or wrapper of those projects.
+Trivergence is an independent project. It is not affiliated with, sponsored by or endorsed by OpenAI, Anthropic or Google. Product names and trademarks belong to their respective owners.
 
-Trivergence is **not affiliated with or endorsed by OpenAI, Anthropic, Google, OpenHands, Sakana AI or Odysseus**. Product names and trademarks belong to their respective owners.
+External tools and providers retain their own installation, authentication, update mechanisms, terms and limits. Trivergence's architecture is designed to integrate capabilities through explicit adapters and trust gates rather than assume ownership of those systems.
 
 ## License
 
