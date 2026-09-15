@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible problem in Trivergence
+title: "[Bug]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Trivergence. Do not include credentials, tokens, private data or exploitable security details here. Use the process in SECURITY.md for sensitive findings.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest reliable sequence that reproduces the problem.
+      placeholder: |
+        1. Start ...
+        2. Select ...
+        3. Run ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Version or commit
+      description: Trivergence version or commit SHA, if known.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows version, Node/pnpm versions, and relevant runtime details.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or evidence
+      description: Paste only relevant, redacted output. Never include secrets or private data.
+      render: shell
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that may help diagnose the problem.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, tokens, personal data and other secrets from this report.
+          required: true
+        - label: This is not a sensitive security vulnerability requiring private disclosure.
+          required: true
