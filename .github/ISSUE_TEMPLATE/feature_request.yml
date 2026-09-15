@@ -1,0 +1,53 @@
+name: Feature or improvement
+description: Propose a focused improvement to Trivergence
+title: "[Proposal]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Trivergence deliberately prioritizes orchestration quality over feature count. Please describe the problem first and keep proposals focused.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What user or engineering problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed direction
+      description: Describe the smallest useful change. You do not need to provide a full implementation design.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Orchestration / strategy
+        - Runtime / workspace
+        - Providers / adapters
+        - Agents / workflows
+        - Memory / persistence
+        - Policy / approvals / audit
+        - Desktop UI / accessibility
+        - Security / privacy
+        - Testing / build / distribution
+        - Documentation / community
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: trust
+    attributes:
+      label: Trust, security or provider implications
+      description: Note any new permissions, external communication, provider assumptions or privileged actions. Write "None" if not applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional. What simpler approach or workaround did you consider?
