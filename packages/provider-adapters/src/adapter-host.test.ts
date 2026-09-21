@@ -76,6 +76,63 @@ describe("AdapterHost", () => {
     ).toThrow(/Duplicate hosted/u);
   });
 
+  it("rejects an exact-recovery claim without an operation identity primitive", () => {
+    const reference = new ReferenceProviderAdapter();
+    expect(
+      () =>
+        new AdapterHost([
+          {
+            capabilityId: "provider.reference.prompt.structured",
+            capabilityVersion: "1.0.0",
+            adapter: {
+              ...reference,
+              manifest: {
+                ...reference.manifest,
+                recoveryCapabilities: ["exact_recovery"],
+              },
+              prepare: reference.prepare.bind(reference),
+              execute: reference.execute.bind(reference),
+              recover: reference.recover.bind(reference),
+            },
+          },
+        ]),
+    ).toThrow(/identity or continuation primitive/u);
+  });
+
+  it("accepts an operation-query capability without inflating it to exact recovery", () => {
+    const reference = new ReferenceProviderAdapter();
+    const host = new AdapterHost([
+      {
+        capabilityId: "provider.reference.prompt.structured",
+        capabilityVersion: "1.0.0",
+        adapter: {
+          manifest: {
+            ...reference.manifest,
+            recoveryCapabilities: ["operation_query"],
+          },
+          prepare: (id, input) => {
+            const prepared = reference.prepare(id, input);
+            return {
+              ...prepared,
+              preview: {
+                ...prepared.preview,
+                recoveryCapabilities: ["operation_query"],
+              },
+            };
+          },
+          execute: reference.execute.bind(reference),
+          recover: reference.recover.bind(reference),
+        },
+      },
+    ]);
+
+    expect(
+      host.prepare("provider.reference.prompt.structured", requestId, {
+        prompt: "Query an existing operation",
+      }).preview.recoveryCapabilities,
+    ).toEqual(["operation_query"]);
+  });
+
   it("rejects a preview whose identity disagrees with the hosted manifest", () => {
     const reference = new ReferenceProviderAdapter();
     const host = new AdapterHost([

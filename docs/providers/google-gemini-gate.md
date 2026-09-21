@@ -365,3 +365,20 @@ dos rutas completas:
 Además deben aprobarse el ADR de credenciales ADC, el tratamiento de retención,
 la revisión legal y el plan de billing. Hasta entonces, Reference Provider sigue
 siendo el único provider ejecutable.
+
+## 10. Reevaluación técnica M5-B0 — 2026-09-21
+
+[ADR-0011](../architecture/adr/0011-recovery-semantics.md) separa exact recovery
+de la garantía fail-safe del workflow:
+
+- **Vertex AI online:** puede mapear inicialmente recovery vacío. Una pérdida de
+  respuesta termina en `remote_state_unknown`, sin nueva inferencia automática.
+  La falta de exact recovery deja de ser bloqueo técnico universal, pero ADC,
+  custodia, BYO project, billing y gates contractuales siguen `UNRESOLVED`.
+- **Gemini Developer API Interactions:** la evidencia existente sigue mapeando
+  `operation_query`, `stream_reconnect`, `remote_cancel` y, para background,
+  candidata a `exact_recovery`; ningún `PASS` existe sin adapter y fixtures.
+  Credencial/auth key y billing separado permanecen intactos.
+
+No cambia ninguna decisión individual o global, no se habilita provider y no se
+autoriza spike.

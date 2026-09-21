@@ -143,6 +143,32 @@ describe("PersistenceStore", () => {
     });
     store.createRun(run);
     store.appendEvidence(evidence);
+    store.saveProviderExecutionAttempt({
+      id: "65000000-0000-4000-8000-000000000001",
+      runId: run.id,
+      planId: preview.plan.id,
+      stepId: "step-1",
+      capabilityId: "system.diagnostics.read",
+      adapterId: "trivergence.reference-provider",
+      adapterVersion: "1.0.0",
+      adapterBuildDigest: "a".repeat(64),
+      providerId: "reference",
+      transport: "in_memory_stream",
+      requestDigest: "f".repeat(64),
+      contextDigest: "b".repeat(64),
+      effectClass: "read_only",
+      recoveryCapabilities: [],
+      remoteState: "not_dispatched",
+      budget: {
+        maxInputBytes: 4_096,
+        maxOutputBytes: 4_096,
+        maxChunks: 32,
+        timeoutMs: 30_000,
+        maxCostMicrounits: 0,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
     store.saveMemoryEntry({
       id: "70000000-0000-4000-8000-000000000001",
       namespace: "test",
@@ -165,6 +191,14 @@ describe("PersistenceStore", () => {
     expect(JSON.stringify(store.exportWorkspaceData(workspaceId))).toContain(
       "secreto local",
     );
+    expect(
+      store.exportWorkspaceData(workspaceId)["providerExecutionAttempts"],
+    ).toHaveLength(1);
+    expect(
+      store
+        .listWorkspaceAuditEvents(workspaceId)
+        .map((event) => event.eventType),
+    ).toContain("provider.attempt_recorded");
     const deleted = store.deleteMemoryEntry(
       "70000000-0000-4000-8000-000000000001",
       NOW,
@@ -178,6 +212,11 @@ describe("PersistenceStore", () => {
     expect(store.hasWorkspaceRetention(workspaceId)).toBe(true);
     expect(store.purgeWorkspaceData(workspaceId)).toBe(1);
     expect(store.findRun(run.id)).toBeUndefined();
+    expect(
+      store.findProviderExecutionAttempt(
+        "65000000-0000-4000-8000-000000000001",
+      ),
+    ).toBeUndefined();
     expect(store.listExecutionHistory(workspaceId)).toEqual([]);
     expect(store.verifyAuditChain().valid).toBe(true);
     expect(

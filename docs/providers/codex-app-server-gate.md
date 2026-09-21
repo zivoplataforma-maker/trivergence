@@ -265,3 +265,17 @@ contractuales y técnicas. Entonces, antes de implementar el adapter productivo:
 5. ejecutar las 14 comprobaciones y todos los gates;
 6. crear una attestation revisada y añadir su digest al trust store mediante un
    release explícito.
+
+## Reevaluación técnica M5-B0 — 2026-09-21
+
+[ADR-0011](../architecture/adr/0011-recovery-semantics.md) demuestra que las dos
+pruebas anteriores mezclaban exact recovery del provider con recovery seguro de
+la orquestación. App Server sigue sin primitive documentada para recuperar el
+mismo turn, por lo que declararía inicialmente capabilities vacías; una
+interrupción después del dispatch debe producir `remote_state_unknown`, detener
+el workflow y exigir revisión humana. Esto elimina **exact recovery ausente**
+como bloqueo técnico universal, pero no lo convierte en capability soportada.
+
+No cambia la decisión global `UNRESOLVED`: madurez de producción,
+autenticación/entitlement, autorización contractual y distribución siguen
+abiertas. No se autorizan adapter ni spike y no se alteró el trust store.

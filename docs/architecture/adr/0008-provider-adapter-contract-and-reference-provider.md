@@ -14,7 +14,7 @@ cada integración.
 ## Decisión
 
 Se adopta un contrato versionado `ProviderAdapter` con `prepare`, `execute` y
-`recover`, un manifest con provenance de build y un puente único
+`recover` opcional, un manifest con provenance de build y un puente único
 `ProviderStepDispatcher` hacia Runtime.
 
 Se implementa un Reference Provider exclusivamente local y determinista para
@@ -29,6 +29,11 @@ aprobación. Prompt, contexto y respuesta no se persisten en el checkpoint.
 M5 permanece `PARTIAL`: queda verificada la infraestructura genérica, no un
 conector comercial. M6 y el resto del roadmap pueden avanzar usando el contrato
 local sin relajar ningún gate.
+
+La semántica binaria de recovery adoptada inicialmente queda reemplazada por
+[ADR-0011](0011-recovery-semantics.md): capabilities explícitas, estado remoto
+desconocido y separación entre recuperación del provider y recuperación segura
+del workflow.
 
 ## Consecuencias
 

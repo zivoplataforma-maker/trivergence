@@ -3,6 +3,7 @@ import {
   providerExecutionPreviewSchema,
   providerExecutionResultSchema,
   providerIdSchema,
+  providerRecoveryCapabilitiesSchema,
   providerStreamEventSchema,
   type ProviderExecutionResult,
   type ProviderRecoveryCheckpoint,
@@ -37,6 +38,30 @@ export class AdapterHost {
         throw new Error("Adapter capability version is invalid");
       }
       providerIdSchema.parse(registration.adapter.manifest.providerId);
+      const recoveryCapabilities = providerRecoveryCapabilitiesSchema.parse(
+        registration.adapter.manifest.recoveryCapabilities,
+      );
+      if (
+        recoveryCapabilities.includes("exact_recovery") &&
+        !recoveryCapabilities.some((capability) =>
+          [
+            "local_checkpoint",
+            "stream_reconnect",
+            "operation_query",
+            "operation_resume",
+            "idempotent_retry",
+          ].includes(capability),
+        )
+      ) {
+        throw new Error(
+          "Exact recovery requires an identity or continuation primitive",
+        );
+      }
+      if (recoveryCapabilities.length > 0 && !registration.adapter.recover) {
+        throw new Error(
+          "Declared recovery capabilities require a recover implementation",
+        );
+      }
       if (this.#registrations.has(capabilityId)) {
         throw new Error(
           `Duplicate hosted provider capability: ${capabilityId}`,
@@ -81,7 +106,8 @@ export class AdapterHost {
       preview.adapterBuildDigest !== manifest.adapterBuildDigest ||
       preview.providerId !== manifest.providerId ||
       preview.transport !== manifest.transport ||
-      preview.recoveryPolicy !== manifest.recoveryPolicy ||
+      JSON.stringify([...preview.recoveryCapabilities].sort()) !==
+        JSON.stringify([...manifest.recoveryCapabilities].sort()) ||
       (manifest.localOnly && preview.context.networkRequired)
     ) {
       throw new Error("Provider adapter preview does not match its manifest");
@@ -116,10 +142,15 @@ export class AdapterHost {
   ): Promise<ProviderExecutionResult> {
     const registration = this.#registration(capabilityId);
     if (
-      request.preview.recoveryPolicy === "none" ||
+      request.preview.recoveryCapabilities.length === 0 ||
       checkpoint.requestDigest !== request.preview.requestDigest
     ) {
       throw new Error("Provider checkpoint is not valid for this request");
+    }
+    if (!registration.adapter.recover) {
+      throw new Error(
+        "Provider does not implement declared recovery capabilities",
+      );
     }
     const result = await registration.adapter.recover(request, checkpoint, {
       ...options,
@@ -154,6 +185,20 @@ export class AdapterHost {
       provenance.contextDigest !== request.preview.contextDigest
     ) {
       throw new Error("Provider result provenance does not match its request");
+    }
+    if (!result.remoteState) {
+      throw new Error("Provider result omitted remote execution state");
+    }
+    if (
+      (result.outcome === "succeeded" && result.remoteState !== "succeeded") ||
+      (result.outcome === "failed" && result.remoteState !== "failed") ||
+      (result.outcome === "cancelled" && result.remoteState !== "cancelled") ||
+      (result.outcome === "timed_out" &&
+        !["failed", "cancelled"].includes(result.remoteState)) ||
+      (result.outcome === "remote_state_unknown" &&
+        result.remoteState !== "remote_state_unknown")
+    ) {
+      throw new Error("Provider outcome contradicts remote execution state");
     }
     return result;
   }

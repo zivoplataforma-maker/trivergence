@@ -1,4 +1,5 @@
 import {
+  classifyOperationEffect,
   executionPlanSchema,
   type CapabilityDescriptor,
   type ExecutionPlan,
@@ -47,6 +48,7 @@ export class ExecutionPlanner {
       const action = {
         id: this.createId(),
         ...capability.action,
+        effectClass: classifyOperationEffect(capability.action),
         ...(request.workspaceId ? { workspaceId: request.workspaceId } : {}),
         ...(input ? { input } : {}),
       };

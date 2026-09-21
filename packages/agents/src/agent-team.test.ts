@@ -57,12 +57,14 @@ describe("AgentTeam", () => {
   it("rejects external providers and provider-call overcommit", async () => {
     const candidate = new ReferenceProviderAdapter();
     const external = {
-      ...candidate,
       manifest: {
         ...candidate.manifest,
         providerId: "codex",
         localOnly: false,
       },
+      prepare: candidate.prepare.bind(candidate),
+      execute: candidate.execute.bind(candidate),
+      recover: candidate.recover.bind(candidate),
     } as ProviderAdapter;
     expect(
       () => new AgentTeam(hosted(external), referenceProviderCapabilityId),

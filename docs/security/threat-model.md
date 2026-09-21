@@ -41,30 +41,31 @@ mismo usuario.
 
 ## Amenazas prioritarias y controles
 
-| ID   | Amenaza                                          | Impacto                        | Controles P0                                                                                              |
-| ---- | ------------------------------------------------ | ------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| T-01 | XSS llega a APIs de host                         | RCE/lectura de datos           | Contenido local, CSP, aislamiento, sandbox, bridge nominal, validación de sender.                         |
-| T-02 | Path traversal o junction escapa del workspace   | Escritura/lectura arbitraria   | Canonización, `realpath`, handle/revalidación previa, reglas de raíz y tests Windows.                     |
-| T-03 | Command injection                                | RCE                            | Ejecutable + argv, `shell:false`, catálogo de tools, sin `eval`, preview exacta.                          |
-| T-04 | Aprobación reutilizada para otra acción          | Elevación lógica               | Hash canónico, expiración, un uso, bind a workspace/perfil/run.                                           |
-| T-05 | Prompt injection ordena una tool peligrosa       | Pérdida/exfiltración           | Contenido siempre datos, policy engine fuera del modelo, confirmaciones y límites.                        |
-| T-06 | Contexto contiene secreto                        | Exfiltración                   | Denylist obligatoria, ignore, scan, selección visible, redacción y modo privado.                          |
-| T-07 | Parser de proveedor acepta formato desconocido   | Acción incorrecta              | Matriz por versión, schemas estrictos, fixtures, abortar eventos críticos desconocidos.                   |
-| T-08 | Cancelar deja descendientes                      | Procesos persistentes          | Supervisor/Job Object verificado; estado orphaned y autonomía bloqueada si falla.                         |
-| T-09 | Terminal escape sequence engaña/actúa sobre host | Confusión/abuso clipboard      | xterm actualizado, features peligrosas desactivadas, no confiar en title/links, sanitizar logs.           |
-| T-10 | Auditoría omitida o alterada                     | Falta de trazabilidad          | Escritura transaccional, secuencia/hash encadenado P1, export con manifest; fail-closed privilegiado.     |
-| T-11 | `openExternal` con esquema hostil                | Ejecución local                | Parser URL, solo HTTPS allowlist/confirmación, denegar file/custom protocols.                             |
-| T-12 | Dependencia comprometida                         | RCE en build/app               | Lockfile, revisión de scripts, SBOM, scanning, updates controlados y releases reproducibles.              |
-| T-13 | SQLite o backup corrupto                         | Pérdida de datos               | WAL/backup API, integrity check, migración transaccional, restauración a staging.                         |
-| T-14 | DoS por archivo/salida enorme                    | Congelamiento/disco lleno      | Límites de bytes, profundidad, tiempo, cuotas y backpressure.                                             |
-| T-15 | CLI falsa primero en PATH                        | Ejecución maliciosa            | Mostrar ruta/editor, firma/hash cuando sea posible, confirmación al cambiar resolución.                   |
-| T-16 | Capability Registry adulterado                   | Plan usa capacidad falsa       | Snapshot versionado, schemas estrictos, provenance y revalidación antes de ejecutar.                      |
-| T-17 | Dependencia cíclica o plan sobredimensionado     | DoS/flujo ambiguo              | DFS acotado, máximo de nodos/dependencias, detección de ciclos y fallo cerrado.                           |
-| T-18 | Strategy/evaluation manipulada por contenido     | Bypass de control              | Motores deterministas fuera de agentes/modelos; motivos y versiones auditables.                           |
-| T-19 | Evidencia falsa o perteneciente a otro run       | Éxito incorrecto               | Bind a run/step/plan, schema, provenance y correlación; evidencia desconocida no aprueba.                 |
-| T-20 | Checkpoint manipulado o reutilizado              | Replay/resultado inconsistente | Digest de request/cursor, bind a plan/step/adapter, estado active/consumed y validación antes de recover. |
-| T-21 | Stream altera control o falla el observador      | Bypass/DoS de ejecución        | Eventos tipados e informativos, secuencia/correlación, callback aislado; nunca otorga autoridad.          |
-| T-22 | Retry ilimitado multiplica efectos o coste       | Efectos duplicados/agotamiento | Política explícita, un solo retry local, budgets y aprobación nueva en recuperación persistente.          |
+| ID   | Amenaza                                          | Impacto                        | Controles P0                                                                                               |
+| ---- | ------------------------------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| T-01 | XSS llega a APIs de host                         | RCE/lectura de datos           | Contenido local, CSP, aislamiento, sandbox, bridge nominal, validación de sender.                          |
+| T-02 | Path traversal o junction escapa del workspace   | Escritura/lectura arbitraria   | Canonización, `realpath`, handle/revalidación previa, reglas de raíz y tests Windows.                      |
+| T-03 | Command injection                                | RCE                            | Ejecutable + argv, `shell:false`, catálogo de tools, sin `eval`, preview exacta.                           |
+| T-04 | Aprobación reutilizada para otra acción          | Elevación lógica               | Hash canónico, expiración, un uso, bind a workspace/perfil/run.                                            |
+| T-05 | Prompt injection ordena una tool peligrosa       | Pérdida/exfiltración           | Contenido siempre datos, policy engine fuera del modelo, confirmaciones y límites.                         |
+| T-06 | Contexto contiene secreto                        | Exfiltración                   | Denylist obligatoria, ignore, scan, selección visible, redacción y modo privado.                           |
+| T-07 | Parser de proveedor acepta formato desconocido   | Acción incorrecta              | Matriz por versión, schemas estrictos, fixtures, abortar eventos críticos desconocidos.                    |
+| T-08 | Cancelar deja descendientes                      | Procesos persistentes          | Supervisor/Job Object verificado; estado orphaned y autonomía bloqueada si falla.                          |
+| T-09 | Terminal escape sequence engaña/actúa sobre host | Confusión/abuso clipboard      | xterm actualizado, features peligrosas desactivadas, no confiar en title/links, sanitizar logs.            |
+| T-10 | Auditoría omitida o alterada                     | Falta de trazabilidad          | Escritura transaccional, secuencia/hash encadenado P1, export con manifest; fail-closed privilegiado.      |
+| T-11 | `openExternal` con esquema hostil                | Ejecución local                | Parser URL, solo HTTPS allowlist/confirmación, denegar file/custom protocols.                              |
+| T-12 | Dependencia comprometida                         | RCE en build/app               | Lockfile, revisión de scripts, SBOM, scanning, updates controlados y releases reproducibles.               |
+| T-13 | SQLite o backup corrupto                         | Pérdida de datos               | WAL/backup API, integrity check, migración transaccional, restauración a staging.                          |
+| T-14 | DoS por archivo/salida enorme                    | Congelamiento/disco lleno      | Límites de bytes, profundidad, tiempo, cuotas y backpressure.                                              |
+| T-15 | CLI falsa primero en PATH                        | Ejecución maliciosa            | Mostrar ruta/editor, firma/hash cuando sea posible, confirmación al cambiar resolución.                    |
+| T-16 | Capability Registry adulterado                   | Plan usa capacidad falsa       | Snapshot versionado, schemas estrictos, provenance y revalidación antes de ejecutar.                       |
+| T-17 | Dependencia cíclica o plan sobredimensionado     | DoS/flujo ambiguo              | DFS acotado, máximo de nodos/dependencias, detección de ciclos y fallo cerrado.                            |
+| T-18 | Strategy/evaluation manipulada por contenido     | Bypass de control              | Motores deterministas fuera de agentes/modelos; motivos y versiones auditables.                            |
+| T-19 | Evidencia falsa o perteneciente a otro run       | Éxito incorrecto               | Bind a run/step/plan, schema, provenance y correlación; evidencia desconocida no aprueba.                  |
+| T-20 | Checkpoint manipulado o reutilizado              | Replay/resultado inconsistente | Digest de request/cursor, bind a plan/step/adapter, estado active/consumed y validación antes de recover.  |
+| T-21 | Stream altera control o falla el observador      | Bypass/DoS de ejecución        | Eventos tipados e informativos, secuencia/correlación, callback aislado; nunca otorga autoridad.           |
+| T-22 | Retry o falso fallo duplica efectos/coste        | Efectos duplicados/agotamiento | Attempt durable, effect class, `remote_state_unknown`, cero retry automático y resolución humana auditada. |
+| T-23 | Cancelación remota sin ACK se trata como éxito   | Operación huérfana             | `cancel_requested` no es terminal; sin query/confirmación se conserva UNKNOWN y se detiene el workflow.    |
 
 ## Prompt injection
 

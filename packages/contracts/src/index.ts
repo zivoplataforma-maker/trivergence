@@ -178,6 +178,28 @@ export const riskSchema = z.enum([
 ]);
 export type Risk = z.infer<typeof riskSchema>;
 
+export const operationEffectClassSchema = z.enum([
+  "pure",
+  "read_only",
+  "reversible",
+  "side_effectful",
+  "irreversible",
+]);
+export type OperationEffectClass = z.infer<typeof operationEffectClassSchema>;
+
+export const classifyOperationEffect = (action: {
+  readonly kinds: readonly ActionKind[];
+  readonly risk: Risk;
+  readonly effectClass?: OperationEffectClass | undefined;
+}): OperationEffectClass => {
+  if (action.effectClass) return action.effectClass;
+  if (action.risk === "destructive" || action.kinds.includes("delete")) {
+    return "irreversible";
+  }
+  if (action.kinds.every((kind) => kind === "read")) return "read_only";
+  return "side_effectful";
+};
+
 export const policyProfileSchema = z.enum([
   "observer",
   "assistant",
@@ -217,6 +239,7 @@ export const actionRequestSchema = z.object({
   toolVersion: z.string().min(1).max(40),
   kinds: z.array(actionKindSchema).min(1),
   risk: riskSchema,
+  effectClass: operationEffectClassSchema.optional(),
   workspaceId: z.string().uuid().optional(),
   targets: z.array(z.string().min(1).max(2_048)).max(64).optional(),
   input: actionInputSchema.optional(),
@@ -282,6 +305,7 @@ export const capabilityActionSchema = z.object({
   toolVersion: z.string().min(1).max(40),
   kinds: z.array(actionKindSchema).min(1).max(8),
   risk: riskSchema,
+  effectClass: operationEffectClassSchema.optional(),
   summary: z.string().min(1).max(500),
 });
 export type CapabilityAction = z.infer<typeof capabilityActionSchema>;
@@ -561,6 +585,42 @@ export const providerBudgetSchema = z.object({
 });
 export type ProviderBudget = z.infer<typeof providerBudgetSchema>;
 
+export const providerRecoveryCapabilitySchema = z.enum([
+  "local_checkpoint",
+  "stream_reconnect",
+  "operation_query",
+  "operation_resume",
+  "idempotent_retry",
+  "remote_cancel",
+  "exact_recovery",
+]);
+export type ProviderRecoveryCapability = z.infer<
+  typeof providerRecoveryCapabilitySchema
+>;
+
+export const providerRecoveryCapabilitiesSchema = z
+  .array(providerRecoveryCapabilitySchema)
+  .max(7)
+  .refine((items) => new Set(items).size === items.length, {
+    message: "Recovery capabilities must be unique",
+  });
+export type ProviderRecoveryCapabilities = z.infer<
+  typeof providerRecoveryCapabilitiesSchema
+>;
+
+export const remoteExecutionStateSchema = z.enum([
+  "not_dispatched",
+  "dispatching",
+  "accepted",
+  "running",
+  "cancel_requested",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "remote_state_unknown",
+]);
+export type RemoteExecutionState = z.infer<typeof remoteExecutionStateSchema>;
+
 export const providerRequestInputSchema = z.object({
   prompt: z.string().trim().min(1).max(2_048),
   context: z.array(z.string().max(2_048)).max(64).default([]),
@@ -603,7 +663,7 @@ export type ProviderContextPreview = z.infer<
 >;
 
 export const providerExecutionPreviewSchema = z.object({
-  schemaVersion: z.literal("1"),
+  schemaVersion: z.enum(["1", "2"]),
   adapterId: z
     .string()
     .min(3)
@@ -618,7 +678,9 @@ export const providerExecutionPreviewSchema = z.object({
   adapterBuildDigest: sha256DigestSchema,
   requestDigest: sha256DigestSchema,
   contextDigest: sha256DigestSchema,
-  recoveryPolicy: z.enum(["none", "single_checkpoint_retry"]),
+  recoveryCapabilities: providerRecoveryCapabilitiesSchema.default([]),
+  /** Legacy field accepted only so persisted M5 previews remain readable. */
+  recoveryPolicy: z.enum(["none", "single_checkpoint_retry"]).optional(),
 });
 export type ProviderExecutionPreview = z.infer<
   typeof providerExecutionPreviewSchema
@@ -665,6 +727,7 @@ export const providerAdapterErrorCodeSchema = z.enum([
   "transport_error",
   "protocol_error",
   "recovery_unavailable",
+  "remote_state_unknown",
 ]);
 export type ProviderAdapterErrorCode = z.infer<
   typeof providerAdapterErrorCodeSchema
@@ -756,9 +819,16 @@ export type ProviderExecutionProvenance = z.infer<
 >;
 
 export const providerExecutionResultSchema = z.object({
-  schemaVersion: z.literal("1"),
+  schemaVersion: z.enum(["1", "2"]),
   requestId: z.string().uuid(),
-  outcome: z.enum(["succeeded", "failed", "cancelled", "timed_out"]),
+  outcome: z.enum([
+    "succeeded",
+    "failed",
+    "cancelled",
+    "timed_out",
+    "remote_state_unknown",
+  ]),
+  remoteState: remoteExecutionStateSchema.optional(),
   response: z.string().max(1_048_576).optional(),
   usage: providerUsageSchema,
   provenance: providerExecutionProvenanceSchema,
@@ -767,6 +837,31 @@ export const providerExecutionResultSchema = z.object({
 });
 export type ProviderExecutionResult = z.infer<
   typeof providerExecutionResultSchema
+>;
+
+export const providerExecutionAttemptSchema = z.object({
+  id: z.string().uuid(),
+  runId: z.string().uuid(),
+  planId: z.string().uuid(),
+  stepId: z.string().min(1).max(80),
+  capabilityId: capabilityIdSchema,
+  adapterId: z.string().min(3).max(120),
+  adapterVersion: z.string().min(1).max(40),
+  adapterBuildDigest: sha256DigestSchema,
+  providerId: z.string().min(1).max(80),
+  transport: providerTransportSchema,
+  requestDigest: sha256DigestSchema,
+  contextDigest: sha256DigestSchema,
+  effectClass: operationEffectClassSchema,
+  recoveryCapabilities: providerRecoveryCapabilitiesSchema,
+  remoteState: remoteExecutionStateSchema,
+  budget: providerBudgetSchema,
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  resolutionActor: z.string().min(1).max(120).optional(),
+});
+export type ProviderExecutionAttempt = z.infer<
+  typeof providerExecutionAttemptSchema
 >;
 
 export const executionDescriptorSchema = z
@@ -887,6 +982,9 @@ export const auditEventTypeSchema = z.enum([
   "execution.outcome_evaluated",
   "provider.checkpoint_recorded",
   "provider.checkpoint_consumed",
+  "provider.attempt_recorded",
+  "provider.remote_state_changed",
+  "provider.remote_state_resolved",
   "memory.entry_stored",
   "memory.entry_deleted",
   "memory.expired_pruned",
@@ -1135,6 +1233,7 @@ export const workspaceExecutionStatusSchema = z.enum([
   "cancelled",
   "timed_out",
   "orphaned",
+  "remote_state_unknown",
 ]);
 
 export const workspaceExecutionStateSchema = z.object({
@@ -1204,7 +1303,10 @@ export const workspaceHistoryEntrySchema = z.object({
   runId: z.string().uuid(),
   goal: z.string().min(3).max(2_000),
   strategyKind: strategyDecisionSchema.shape.kind,
-  status: executionRunStatusSchema,
+  status: z.union([
+    executionRunStatusSchema,
+    z.literal("remote_state_unknown"),
+  ]),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   evidenceCount: z.number().int().nonnegative().max(256),

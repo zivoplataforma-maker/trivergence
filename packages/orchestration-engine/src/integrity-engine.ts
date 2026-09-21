@@ -134,6 +134,9 @@ function normalizeCapability(capability: CapabilityDescriptor) {
       toolVersion: capability.action.toolVersion,
       kinds: [...capability.action.kinds].sort(),
       risk: capability.action.risk,
+      ...(capability.action.effectClass
+        ? { effectClass: capability.action.effectClass }
+        : {}),
       summary: capability.action.summary,
     },
     dependencies: [...capability.dependencies].sort(),

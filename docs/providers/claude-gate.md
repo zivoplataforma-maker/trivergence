@@ -249,3 +249,16 @@ No se creó un spike porque los gates técnico y contractual permanecen
 `UNRESOLVED`. Las preguntas formales están en
 [`claude-open-questions.md`](claude-open-questions.md) y las mitigaciones en
 [`threat-model-claude.md`](../security/threat-model-claude.md).
+
+## Reevaluación técnica M5-B0 — 2026-09-21
+
+[ADR-0011](../architecture/adr/0011-recovery-semantics.md) conserva la evidencia
+del gate: `--resume` continúa una sesión, no recupera exactamente el mismo turn.
+Claude Code declararía capabilities de recovery vacías hasta demostrar otra
+primitive. La garantía del sistema ahora es detenerse en `remote_state_unknown`,
+preservar budget/provenance y no reintentar.
+
+Esto elimina la ausencia de exact recovery como bloqueo técnico universal, no
+como gap del producto. La decisión global continúa `UNRESOLVED` por las
+fronteras contractual, de autenticación, billing y distribución ya documentadas.
+No se autorizan adapter ni spike.

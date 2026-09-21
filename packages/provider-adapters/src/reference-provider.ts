@@ -148,7 +148,7 @@ export class ReferenceProviderAdapter implements ProviderAdapter {
     providerId: "reference",
     transport: "in_memory_stream",
     localOnly: true,
-    recoveryPolicy: "single_checkpoint_retry",
+    recoveryCapabilities: ["local_checkpoint", "exact_recovery"],
   };
 
   readonly #clock: () => Date;
@@ -201,7 +201,7 @@ export class ReferenceProviderAdapter implements ProviderAdapter {
       canonicalizeJson({ requestId, input: parsed, contextDigest }),
     );
     const preview = providerExecutionPreviewSchema.parse({
-      schemaVersion: "1",
+      schemaVersion: "2",
       adapterId: ADAPTER_ID,
       providerId: "reference",
       operation: "prompt_structured",
@@ -212,7 +212,7 @@ export class ReferenceProviderAdapter implements ProviderAdapter {
       adapterBuildDigest: ADAPTER_BUILD_DIGEST,
       requestDigest,
       contextDigest,
-      recoveryPolicy: "single_checkpoint_retry",
+      recoveryCapabilities: ["local_checkpoint", "exact_recovery"],
     });
     return { requestId, input: parsed, preview };
   }
@@ -408,9 +408,15 @@ export class ReferenceProviderAdapter implements ProviderAdapter {
     },
   ): ProviderExecutionResult {
     return providerExecutionResultSchema.parse({
-      schemaVersion: "1",
+      schemaVersion: "2",
       requestId: request.requestId,
       outcome: value.outcome,
+      remoteState:
+        value.outcome === "succeeded"
+          ? "succeeded"
+          : value.outcome === "cancelled" || value.outcome === "timed_out"
+            ? "cancelled"
+            : "failed",
       ...(value.response !== undefined ? { response: value.response } : {}),
       usage: value.usage,
       provenance: {
@@ -560,6 +566,7 @@ export function createReferenceProviderCapability(): CapabilityDescriptor {
       toolVersion: ADAPTER_VERSION,
       kinds: ["execute"],
       risk: "guarded",
+      effectClass: "pure",
       summary:
         "Procesar una solicitud estructurada en el proveedor local de referencia",
     },

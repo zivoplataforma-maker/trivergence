@@ -18,6 +18,7 @@ import {
   ReferenceProviderTransport,
   referenceProviderCapabilityId,
   runProviderConformanceSuite,
+  type ProviderAdapter,
 } from "./index.js";
 
 const sha256 = (value: string) =>
@@ -129,5 +130,61 @@ describe("Provider Adapter reusable conformance suite", () => {
     ]);
     expect(report.checks.filter((check) => !check.passed)).toEqual([]);
     expect(report.passed).toBe(true);
+  });
+
+  it("preserves all 14 checks for a provider that declares no recovery", async () => {
+    const capability = createReferenceProviderCapability();
+    let runtimeUnknownBoundaryChecks = 0;
+    const createAdapter = (): ProviderAdapter => {
+      const reference = new ReferenceProviderAdapter({
+        transport: new ReferenceProviderTransport(6, 1, 20),
+      });
+      return {
+        manifest: {
+          ...reference.manifest,
+          recoveryCapabilities: [],
+        },
+        prepare: (requestId: string, requestInput: unknown) => {
+          const prepared = reference.prepare(requestId, requestInput);
+          return {
+            ...prepared,
+            preview: {
+              ...prepared.preview,
+              recoveryCapabilities: [],
+            },
+          };
+        },
+        execute: reference.execute.bind(reference),
+      };
+    };
+    const report = await runProviderConformanceSuite({
+      capability,
+      capabilityId: referenceProviderCapabilityId,
+      capabilityVersion: capability.version,
+      createAdapter,
+      fixtures: {
+        normal: input(),
+        slow: input({ scenario: "slow" }),
+        timeout: input({ scenario: "slow", timeoutMs: 10 }),
+        typedFailure: input({ scenario: "error" }),
+        recoverable: input({ scenario: "recoverable_error" }),
+        inputBudgetExceeded: input({ maxInputBytes: 4 }),
+        outputBudgetExceeded: input({ maxOutputBytes: 8 }),
+        sensitiveValues: [
+          "CONFORMANCE_PRIVATE_PROMPT",
+          "CONFORMANCE_PRIVATE_CONTEXT",
+        ],
+        expectedFailureCode: "transport_error",
+        cancelAfterMs: 30,
+      },
+      verifyApprovalBoundary: async () => undefined,
+      verifyInterruptedRecoveryBoundary: async () => {
+        runtimeUnknownBoundaryChecks += 1;
+      },
+    });
+
+    expect(report.checks).toHaveLength(14);
+    expect(report.checks.filter((check) => !check.passed)).toEqual([]);
+    expect(runtimeUnknownBoundaryChecks).toBe(1);
   });
 });

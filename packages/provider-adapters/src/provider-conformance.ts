@@ -58,6 +58,8 @@ export interface ProviderConformanceSubject {
   readonly createAdapter: () => ProviderAdapter;
   /** Runtime-owned check: execution must stop before dispatch without approval. */
   readonly verifyApprovalBoundary: () => Promise<void>;
+  /** Runtime-owned behavior for adapters that cannot recover the exact operation. */
+  readonly verifyInterruptedRecoveryBoundary?: () => Promise<void>;
   readonly fixtures: ProviderConformanceFixtures;
 }
 
@@ -210,6 +212,14 @@ export async function runProviderConformanceSuite(
   });
 
   await check("recovery", async () => {
+    const capabilities = subject.createAdapter().manifest.recoveryCapabilities;
+    if (capabilities.length === 0) {
+      assert(
+        subject.createAdapter().recover === undefined,
+        "Adapter without recovery capabilities exposes recover",
+      );
+      return;
+    }
     const recovered = await execution(
       subject.createAdapter(),
       subject.fixtures.recoverable,
@@ -222,6 +232,15 @@ export async function runProviderConformanceSuite(
   });
 
   await check("interrupted_recovery", async () => {
+    const capabilities = subject.createAdapter().manifest.recoveryCapabilities;
+    if (!capabilities.includes("exact_recovery")) {
+      assert(
+        subject.verifyInterruptedRecoveryBoundary,
+        "Runtime UNKNOWN boundary fixture is required",
+      );
+      await subject.verifyInterruptedRecoveryBoundary();
+      return;
+    }
     const cancelledRun = interrupted;
     assert(
       cancelledRun?.result.finalCheckpoint,
@@ -329,7 +348,7 @@ export async function runProviderConformanceSuite(
         ...(await delegate.execute(request, options)),
         requestId: randomUUID(),
       }),
-      recover: delegate.recover.bind(delegate),
+      ...(delegate.recover ? { recover: delegate.recover.bind(delegate) } : {}),
     };
     try {
       await execution(malformed, subject.fixtures.normal);

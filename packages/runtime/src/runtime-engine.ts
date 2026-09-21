@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   approvalRecordSchema,
+  classifyOperationEffect,
   executionRunSchema,
   orchestrationPreviewSchema,
   policyDecisionSchema,
@@ -17,6 +18,7 @@ import {
   type PlannedStep,
   type PolicyDecision,
   type ProviderCheckpointRecord,
+  type ProviderExecutionAttempt,
   type RevalidationResult,
   type RuntimeStreamEvent,
   type StepEvidence,
@@ -56,6 +58,18 @@ export interface RuntimePersistence {
     checkpointId: string,
     consumedAt: string,
   ): ProviderCheckpointRecord;
+  saveProviderExecutionAttempt(
+    attempt: ProviderExecutionAttempt,
+  ): ProviderExecutionAttempt;
+  findProviderExecutionAttempt(
+    attemptId: string,
+  ): ProviderExecutionAttempt | undefined;
+  updateProviderExecutionState(
+    attemptId: string,
+    remoteState: ProviderExecutionAttempt["remoteState"],
+    updatedAt: string,
+    resolutionActor?: string,
+  ): ProviderExecutionAttempt;
   createApproval(approval: ApprovalRecord): ApprovalRecord;
   findApproval(approvalId: string): ApprovalRecord | undefined;
   decideApproval(
@@ -107,7 +121,8 @@ export interface RuntimeExecutionResult {
     | "failed"
     | "cancelled"
     | "timed_out"
-    | "orphaned";
+    | "orphaned"
+    | "remote_state_unknown";
   readonly reason: string;
   readonly runId?: string;
   readonly evidenceCount: number;
@@ -151,7 +166,11 @@ export class RuntimeEngine {
   readonly #idFactory: () => string;
   readonly #activeRuns = new Map<
     string,
-    { readonly controller: AbortController; readonly planId: string }
+    {
+      readonly controller: AbortController;
+      readonly planId: string;
+      providerAttemptId?: string;
+    }
   >();
 
   constructor(dependencies: RuntimeDependencies) {
@@ -329,7 +348,12 @@ export class RuntimeEngine {
     );
 
     const controller = new AbortController();
-    this.#activeRuns.set(run.id, { controller, planId: preview.plan.id });
+    const activeRun: {
+      readonly controller: AbortController;
+      readonly planId: string;
+      providerAttemptId?: string;
+    } = { controller, planId: preview.plan.id };
+    this.#activeRuns.set(run.id, activeRun);
     const completedSteps = new Set<string>();
     let evidenceCount = 0;
     const outputs: Record<string, unknown> = {};
@@ -365,12 +389,6 @@ export class RuntimeEngine {
         const recovery = recoveryId
           ? this.#resolveRecovery(current, preview.plan.id, recoveryId)
           : undefined;
-        if (recoveryId) {
-          this.#persistence.consumeProviderCheckpoint(
-            recoveryId,
-            this.#clock().toISOString(),
-          );
-        }
         let latestCheckpointRecordId: string | undefined;
         const dependencyOutputs = Object.fromEntries(
           current.step.dependsOn.flatMap((stepId) =>
@@ -425,13 +443,92 @@ export class RuntimeEngine {
             }
           },
         };
-        const result = recovery
-          ? await current.dispatcher.recover!(
-              dispatchContext,
-              recovery.checkpoint,
-            )
-          : await current.dispatcher.dispatch(dispatchContext);
-        this.#validateDispatchResult(result);
+        const providerRequest = current.descriptor.providerRequest;
+        const providerAttempt = providerRequest
+          ? this.#persistence.saveProviderExecutionAttempt({
+              id: this.#idFactory(),
+              runId: run.id,
+              planId: run.planId,
+              stepId: current.step.id,
+              capabilityId: current.step.capabilityId,
+              adapterId: providerRequest.adapterId,
+              adapterVersion: providerRequest.adapterVersion,
+              adapterBuildDigest: providerRequest.adapterBuildDigest,
+              providerId: providerRequest.providerId,
+              transport: providerRequest.transport,
+              requestDigest: providerRequest.requestDigest,
+              contextDigest: providerRequest.contextDigest,
+              effectClass: classifyOperationEffect(current.step.action),
+              recoveryCapabilities: providerRequest.recoveryCapabilities,
+              remoteState: "not_dispatched",
+              budget: providerRequest.budget,
+              createdAt: this.#clock().toISOString(),
+              updatedAt: this.#clock().toISOString(),
+            })
+          : undefined;
+        if (providerAttempt) {
+          activeRun.providerAttemptId = providerAttempt.id;
+          this.#persistence.updateProviderExecutionState(
+            providerAttempt.id,
+            "dispatching",
+            this.#clock().toISOString(),
+          );
+        }
+        let result: DispatchResult;
+        try {
+          result = recovery
+            ? await current.dispatcher.recover!(
+                dispatchContext,
+                recovery.checkpoint,
+              )
+            : await current.dispatcher.dispatch(dispatchContext);
+        } catch (error) {
+          if (providerAttempt) {
+            this.#markProviderStateUnknown(providerAttempt.id);
+            return this.#finishUnknown(
+              run.id,
+              current.step.id,
+              evidenceCount,
+              outputs,
+            );
+          }
+          throw error;
+        } finally {
+          delete activeRun.providerAttemptId;
+        }
+        try {
+          this.#validateDispatchResult(result);
+        } catch (error) {
+          if (providerAttempt) {
+            this.#markProviderStateUnknown(providerAttempt.id);
+            return this.#finishUnknown(
+              run.id,
+              current.step.id,
+              evidenceCount,
+              outputs,
+            );
+          }
+          throw error;
+        }
+        if (providerAttempt) {
+          const remoteState = result.remoteState ?? "remote_state_unknown";
+          this.#persistence.updateProviderExecutionState(
+            providerAttempt.id,
+            remoteState,
+            this.#clock().toISOString(),
+          );
+          if (
+            result.outcome === "remote_state_unknown" ||
+            remoteState === "remote_state_unknown"
+          ) {
+            return this.#finishUnknown(
+              run.id,
+              current.step.id,
+              evidenceCount,
+              outputs,
+            );
+          }
+        }
         this.#appendEvidence(
           run,
           current,
@@ -441,6 +538,12 @@ export class RuntimeEngine {
         if (result.outcome === "succeeded" && latestCheckpointRecordId) {
           this.#persistence.consumeProviderCheckpoint(
             latestCheckpointRecordId,
+            this.#clock().toISOString(),
+          );
+        }
+        if (recoveryId) {
+          this.#persistence.consumeProviderCheckpoint(
+            recoveryId,
             this.#clock().toISOString(),
           );
         }
@@ -504,8 +607,36 @@ export class RuntimeEngine {
   cancel(runId: string): boolean {
     const active = this.#activeRuns.get(runId);
     if (!active) return false;
+    if (active.providerAttemptId) {
+      const attempt = this.#persistence.findProviderExecutionAttempt(
+        active.providerAttemptId,
+      );
+      if (
+        attempt &&
+        ["dispatching", "accepted", "running"].includes(attempt.remoteState)
+      ) {
+        this.#persistence.updateProviderExecutionState(
+          attempt.id,
+          "cancel_requested",
+          this.#clock().toISOString(),
+        );
+      }
+    }
     active.controller.abort();
     return true;
+  }
+
+  resolveUnknownProviderExecution(
+    attemptId: string,
+    resolution: "succeeded" | "failed" | "cancelled",
+    actor: string,
+  ): ProviderExecutionAttempt {
+    return this.#persistence.updateProviderExecutionState(
+      attemptId,
+      resolution,
+      this.#clock().toISOString(),
+      actor,
+    );
   }
 
   recoverOrphans(): string[] {
@@ -637,11 +768,52 @@ export class RuntimeEngine {
     }
   }
 
+  #markProviderStateUnknown(attemptId: string): void {
+    const current = this.#persistence.findProviderExecutionAttempt(attemptId);
+    if (
+      current &&
+      ["dispatching", "accepted", "running", "cancel_requested"].includes(
+        current.remoteState,
+      )
+    ) {
+      this.#persistence.updateProviderExecutionState(
+        attemptId,
+        "remote_state_unknown",
+        this.#clock().toISOString(),
+      );
+    }
+  }
+
+  #finishUnknown(
+    runId: string,
+    stepId: string,
+    evidenceCount: number,
+    outputs: Readonly<Record<string, unknown>>,
+  ): RuntimeExecutionResult {
+    this.#persistence.updateRunStatus(
+      runId,
+      "orphaned",
+      this.#clock().toISOString(),
+    );
+    this.#persistence.appendAuditEvent("execution.blocked", runId, {
+      reason: "remote_state_unknown",
+      stepId,
+    });
+    return {
+      status: "remote_state_unknown",
+      reason:
+        "Remote state is unknown. Execution stopped without automatic retry.",
+      runId,
+      evidenceCount,
+      outputs,
+    };
+  }
+
   #finishRun(
     runId: string,
     status: Exclude<
       RuntimeExecutionResult["status"],
-      "blocked" | "approval_required"
+      "blocked" | "approval_required" | "remote_state_unknown"
     >,
     reason: string,
     evidenceCount: number,

@@ -26,6 +26,24 @@ siguiente paso M5 sigue siendo obtener aprobación técnica/contractual/legal pa
 una ruta oficial exacta y recién entonces implementar su adaptador contra esta
 suite. M5 y M7 permanecen `PARTIAL`.
 
+## M5-B0 — semántica de recovery
+
+Estado: `DONE` para el contrato interno, sin aprobar conectores externos.
+
+- ADR-0011 separa provider execution recovery de orchestration recovery;
+- manifests declaran primitives, no un booleano;
+- attempt journal y `remote_state_unknown` preservan incertidumbre, efectos,
+  budget y provenance;
+- no existe retry automático; resolution humana es explícita y auditada;
+- la suite conserva sus 14 checks y adapta recovery al nivel declarado;
+- Codex/Claude/Vertex continúan `UNRESOLVED`; Gemini API Interactions continúa
+  `CONDITIONALLY_APPROVED` solo como ruta futura con credencial/proyecto.
+
+Siguiente paso mínimo: revisión M5-B1 del modelo de autenticación/custodia para
+la mejor ruta sin API key que ya tenga claridad contractual, sin construir un
+adapter hasta que todos sus gates obligatorios estén resueltos. M5 y M7
+permanecen `PARTIAL`.
+
 ## Preparación de proveedores sin API keys (2026-09-14)
 
 Interfaz y preferencias locales terminadas y verificadas. Los cuatro candidatos

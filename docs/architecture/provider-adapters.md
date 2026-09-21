@@ -56,6 +56,12 @@ cuentas y no representa a un proveedor externo. Permite probar de extremo a
 extremo preview de contexto, aprobación, streaming, cancelación, budgets,
 errores, provenance y recuperación persistente.
 
+Recovery no es un booleano. Cada manifest declara las primitives verificables
+que posee; el Runtime conserva por separado el estado seguro del workflow. Un
+provider sin recovery exacto puede ser técnicamente utilizable si una
+interrupción termina en `remote_state_unknown`, sin retry ni efectos
+posteriores. Véase [ADR-0011](adr/0011-recovery-semantics.md).
+
 Su disponibilidad local no modifica el trust store de candidatos externos ni
 supera sus gates. Codex, Claude y Gemini continúan `unavailable`.
 
@@ -116,7 +122,8 @@ autoridad propia sobre policy o tools. El host valida manifest, preview, eventos
 y provenance de resultado antes de devolverlos. El Runtime valida el descriptor
 ligado al plan y la aprobación, transmite cancelación mediante `AbortSignal`,
 valida cada evento del stream y persiste solo checkpoints y evidencia
-minimizada. El Orchestration Engine no conoce el transporte ni el proveedor
+minimizada. Además persiste el attempt antes del dispatch, junto con budget y
+clase de efecto. El Orchestration Engine no conoce el transporte ni el proveedor
 concreto.
 
 - Prompt por stdin cuando esté soportado, para evitar exposición en command

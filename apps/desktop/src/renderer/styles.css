@@ -253,6 +253,7 @@ h3 {
 .stateBadge.cancelled,
 .stateBadge.timed_out,
 .stateBadge.orphaned,
+.stateBadge.remote_state_unknown,
 .policyState.deny {
   color: #ffd2d2;
   background: #3a171b;

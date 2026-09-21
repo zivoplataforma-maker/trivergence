@@ -265,3 +265,22 @@ legal corresponde reconsiderar un spike aislado.
 - threat model de OAuth/token vault y procedimiento de incidente/revocación;
 - disclosures de IA, revisión humana y restricciones de alto impacto;
 - prueba de región/export, marca, redistribución y actualización de términos.
+
+## Addendum M5-B0: recovery por capability (2026-09-21)
+
+La columna histórica “Recovery: BLOCKED” significaba “sin exact recovery del
+mismo turn”. Tras [ADR-0011](../architecture/adr/0011-recovery-semantics.md),
+esa ausencia ya no bloquea por sí sola una integración: bloquea reanudar, pero
+Runtime puede conservar la garantía global deteniendo el workflow en UNKNOWN.
+
+| Ruta                               | Capabilities defendibles con evidencia existente | Impacto técnico                      | Gate global                                              |
+| ---------------------------------- | ------------------------------------------------ | ------------------------------------ | -------------------------------------------------------- |
+| Codex App Server                   | ninguna exacta demostrada                        | UNKNOWN seguro; sin retry            | `UNRESOLVED`                                             |
+| Claude Code                        | ninguna; session resume no es turn recovery      | UNKNOWN seguro; sin retry            | `UNRESOLVED`                                             |
+| Vertex AI online                   | ninguna exacta demostrada                        | UNKNOWN seguro; sin nueva inferencia | `UNRESOLVED`                                             |
+| Gemini API Interactions background | query, reconnect, cancel; exact candidata        | adaptable, requiere fixtures         | `CONDITIONALLY_APPROVED` como alternativa con credencial |
+
+No cambian autenticación, contrato, distribución, billing ni las clasificaciones
+de aprobación. Las 14 comprobaciones permanecen; `recovery` verifica honestidad
+del manifest y `interrupted_recovery` verifica exact recovery declarado o el
+límite UNKNOWN del sistema completo.

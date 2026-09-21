@@ -1,7 +1,7 @@
 # Contrato ejecutable de Provider Adapter
 
 Estado: implementado y verificado con el Reference Provider local  
-Versión del contrato: `1`
+Versión del contrato: `2` (`1` continúa parseable para migración)
 
 ## Propósito y límite
 
@@ -22,12 +22,12 @@ otorga aprobación contractual a ningún conector externo.
 Todo adaptador implementa:
 
 - `manifest`: identidad y digest del build, proveedor, transporte, condición
-  local y política de recuperación;
+  local y capabilities de recuperación;
 - `prepare(requestId, input)`: valida la entrada y produce un preview estable;
 - `execute(request, options)`: ejecuta con `AbortSignal` y emite eventos
   estructurados;
-- `recover(request, checkpoint, options)`: verifica y reanuda desde un
-  checkpoint compatible.
+- `recover(request, checkpoint, options)`: operación opcional; solo existe si el
+  manifest declara una primitive de recuperación compatible.
 
 `prepare` debe ser determinista para una misma solicitud y no puede provocar
 efectos, abrir red ni iniciar autenticación. El descriptor derivado se liga al
@@ -38,8 +38,8 @@ de ejecutar o recuperar y aborta si cambió.
 
 El preview contiene proveedor, operación, transporte, destino, necesidad de red,
 clasificación/tamaño/digest de cada elemento de contexto, presupuesto, versión y
-digest del adaptador, digest de request y política de recuperación. No contiene
-el prompt ni el contexto crudo.
+digest del adaptador, digest de request y capabilities de recuperación. No
+contiene el prompt ni el contexto crudo.
 
 Para un adaptador remoto, `networkRequired` debe ser `true` y el destino exacto
 debe aparecer en `networkDestinations`. La aprobación queda ligada al descriptor
@@ -68,10 +68,11 @@ chunks, tiempo y coste en microunidades. La entrada se rechaza en `prepare`; los
 otros límites fallan cerrado durante la ejecución. El resultado contabiliza lo
 realmente consumido incluso cuando termina por límite, cancelación o error.
 
-La cancelación usa el `AbortSignal` del run exacto. El adaptador debe detener su
-transporte y devolver `cancelled`; el timeout interno devuelve `timed_out`. Un
-adaptador de proceso deberá además satisfacer las garantías de kill-tree del
-Runtime; el Reference Provider no crea procesos.
+La cancelación usa el `AbortSignal` del run exacto. El adaptador solo devuelve
+`cancelled` si puede confirmarlo; una cancelación enviada sin ACK termina en
+`remote_state_unknown`. El timeout interno devuelve `timed_out` únicamente con
+estado remoto coherente. Un adaptador de proceso deberá además satisfacer las
+garantías de kill-tree del Runtime; el Reference Provider no crea procesos.
 
 ## Errores
 
@@ -79,14 +80,28 @@ Los códigos estables son:
 
 - `invalid_request`, `input_budget_exceeded`, `output_budget_exceeded`;
 - `chunk_budget_exceeded`, `cost_budget_exceeded`, `timed_out`, `cancelled`;
-- `transport_error`, `protocol_error`, `recovery_unavailable`.
+- `transport_error`, `protocol_error`, `recovery_unavailable`,
+  `remote_state_unknown`.
 
 Todo error declara si es reintentable. Datos desconocidos o inválidos se
 convierten en `protocol_error`; nunca se interpretan de forma permisiva. El
 resultado conserva outcome, usage, provenance y, cuando existe, el último
 checkpoint válido.
 
-## Recuperación persistente
+## Recuperación persistente e incertidumbre
+
+El manifest declara cero o más primitives: `local_checkpoint`,
+`stream_reconnect`, `operation_query`, `operation_resume`, `idempotent_retry`,
+`remote_cancel` y `exact_recovery`. La lista vacía es válida. `exact_recovery`
+requiere una primitive de identidad o continuidad y no autoriza por sí sola un
+retry.
+
+Runtime persiste antes del envío un `provider_execution_attempt` con digest,
+clase de efecto, capabilities, budget y estado remoto. Si el envío pudo ocurrir
+pero no se conoce el resultado, registra `remote_state_unknown`, detiene el
+workflow y no reintenta. Una resolución posterior exige actor humano y queda en
+auditoría. Esta garantía de orquestación es independiente de que el provider
+pueda recuperar exactamente una operación.
 
 Un checkpoint incluye digest de request, próximo chunk, bytes emitidos, cursor
 opaco y digest de integridad. Runtime persiste el registro ligado a
@@ -100,9 +115,13 @@ La recuperación exige simultáneamente:
 4. dispatcher con soporte explícito de recuperación;
 5. una aprobación nueva para la nueva ejecución.
 
-Después del éxito, el checkpoint queda `consumed`. La recuperación automática
-del Reference Provider se limita a un intento desde el último checkpoint. No hay
-reintentos infinitos ni replanificación implícita.
+Después del éxito, el checkpoint queda `consumed`; nunca se consume antes de
+confirmar el resultado de recovery. La recuperación del Reference Provider se
+limita a un intento explícito desde el último checkpoint. No hay reintentos
+automáticos, infinitos ni replanificación implícita.
+
+La decisión normativa completa está en
+[ADR-0011](adr/0011-recovery-semantics.md).
 
 ## Provenance y evidencia
 
@@ -132,12 +151,13 @@ comprobación del límite de aprobación propiedad de Runtime. Devuelve un repor
 por check; no habilita ni registra el proveedor.
 
 La suite exige: declaración de capability, prepare y preview sin contexto crudo,
-execute, stream ordenado, cancelación, recuperación acotada, reanudación tras
-interrupción, timeout, errores tipados, budgets de entrada/salida, provenance,
-aprobación antes del dispatch, rechazo de respuestas malformadas y rechazo de
-capabilities no alojadas. El Reference Provider pasa los 14 checks. Los tests
-E2E persistentes siguen verificando checkpoints, evidencia y aprobación de un
-uso porque esas responsabilidades pertenecen a Runtime, no al adaptador.
+execute, stream ordenado, cancelación, recuperación declarada honestamente,
+comportamiento seguro tras interrupción, timeout, errores tipados, budgets de
+entrada/salida, provenance, aprobación antes del dispatch, rechazo de respuestas
+malformadas y rechazo de capabilities no alojadas. El Reference Provider pasa
+los 14 checks. Los tests E2E persistentes siguen verificando checkpoints, estado
+UNKNOWN, ausencia de retry peligroso, evidencia y aprobación de un uso porque
+esas responsabilidades pertenecen a Runtime, no al adaptador.
 
 ## Checklist para un adaptador real después del gate
 

@@ -4,14 +4,16 @@ import {
   type OrchestrationRequest,
   type PlannedStep,
   type ProviderRecoveryCheckpoint,
+  type RemoteExecutionState,
   type ProviderStreamEvent,
   type StepEvidence,
   type SubsystemKind,
 } from "@trivergence/contracts";
 
 export interface DispatchResult {
-  readonly outcome: StepEvidence["outcome"];
+  readonly outcome: StepEvidence["outcome"] | "remote_state_unknown";
   readonly summary: string;
+  readonly remoteState?: RemoteExecutionState;
   readonly outputDigest?: string;
   readonly treeTerminationConfirmed?: boolean;
   /** Resultado efímero y validado por el dispatcher; nunca se persiste. */

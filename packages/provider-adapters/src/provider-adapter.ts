@@ -4,6 +4,7 @@ import type {
   ProviderExecutionResult,
   ProviderRecoveryCheckpoint,
   ProviderRequestInput,
+  ProviderRecoveryCapabilities,
   ProviderStreamEvent,
   ProviderTransport,
 } from "@trivergence/contracts";
@@ -26,7 +27,7 @@ export interface ProviderAdapterManifest {
   readonly providerId: string;
   readonly transport: ProviderTransport;
   readonly localOnly: boolean;
-  readonly recoveryPolicy: "none" | "single_checkpoint_retry";
+  readonly recoveryCapabilities: ProviderRecoveryCapabilities;
 }
 
 export interface ProviderAdapter {
@@ -36,7 +37,7 @@ export interface ProviderAdapter {
     request: PreparedProviderRequest,
     options: ProviderAdapterExecutionOptions,
   ): Promise<ProviderExecutionResult>;
-  recover(
+  recover?(
     request: PreparedProviderRequest,
     checkpoint: ProviderRecoveryCheckpoint,
     options: ProviderAdapterExecutionOptions,

@@ -9,6 +9,7 @@ import {
   orchestrationPreviewSchema,
   planExecutionBindingSchema,
   providerCheckpointRecordSchema,
+  providerExecutionAttemptSchema,
   stepEvidenceSchema,
   type ApprovalRecord,
   type AuditEvent,
@@ -18,6 +19,7 @@ import {
   type OrchestrationPreview,
   type PlanExecutionBinding,
   type ProviderCheckpointRecord,
+  type ProviderExecutionAttempt,
   type StepEvidence,
 } from "@trivergence/contracts";
 
@@ -63,7 +65,7 @@ export interface PersistedExecutionHistoryEntry {
   readonly runId: string;
   readonly goal: string;
   readonly strategyKind: "direct" | "sequential" | "parallel" | "unavailable";
-  readonly status: ExecutionRun["status"];
+  readonly status: ExecutionRun["status"] | "remote_state_unknown";
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly evidenceCount: number;
@@ -163,6 +165,33 @@ const rowToProviderCheckpoint = (
     status: row.status,
     observedAt: row.observed_at,
     ...(row.consumed_at ? { consumedAt: row.consumed_at } : {}),
+  });
+
+const rowToProviderExecutionAttempt = (
+  row: Record<string, unknown>,
+): ProviderExecutionAttempt =>
+  providerExecutionAttemptSchema.parse({
+    id: row.id,
+    runId: row.run_id,
+    planId: row.plan_id,
+    stepId: row.step_id,
+    capabilityId: row.capability_id,
+    adapterId: row.adapter_id,
+    adapterVersion: row.adapter_version,
+    adapterBuildDigest: row.adapter_build_digest,
+    providerId: row.provider_id,
+    transport: row.transport,
+    requestDigest: row.request_digest,
+    contextDigest: row.context_digest,
+    effectClass: row.effect_class,
+    recoveryCapabilities: JSON.parse(
+      String(row.recovery_capabilities_json),
+    ) as unknown,
+    remoteState: row.remote_state,
+    budget: JSON.parse(String(row.budget_json)) as unknown,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    ...(row.resolution_actor ? { resolutionActor: row.resolution_actor } : {}),
   });
 
 const rowToMemoryEntry = (
@@ -571,6 +600,41 @@ export class PersistenceStore {
       );
       const recovered: string[] = [];
       for (const row of rows) {
+        const attempts = this.#database
+          .prepare(
+            `SELECT id, remote_state, request_digest, step_id
+             FROM provider_execution_attempts
+             WHERE run_id = ? AND remote_state IN (
+               'dispatching', 'accepted', 'running', 'cancel_requested'
+             )`,
+          )
+          .all(row.id) as {
+          id: string;
+          remote_state: string;
+          request_digest: string;
+          step_id: string;
+        }[];
+        for (const attempt of attempts) {
+          this.#database
+            .prepare(
+              `UPDATE provider_execution_attempts
+               SET remote_state = 'remote_state_unknown', updated_at = ?
+               WHERE id = ? AND remote_state = ?`,
+            )
+            .run(updatedAt, attempt.id, attempt.remote_state);
+          this.#audit.append({
+            eventType: "provider.remote_state_changed",
+            subjectId: attempt.id,
+            payload: {
+              from: attempt.remote_state,
+              reason: "runtime_restart_recovery",
+              requestDigest: attempt.request_digest,
+              runId: row.id,
+              stepId: attempt.step_id,
+              to: "remote_state_unknown",
+            },
+          });
+        }
         const result = update.run(updatedAt, row.id);
         if (result.changes !== 1) continue;
         recovered.push(row.id);
@@ -788,6 +852,197 @@ export class PersistenceStore {
           stepId: evidence.stepId,
         },
       });
+    });
+  }
+
+  saveProviderExecutionAttempt(
+    input: ProviderExecutionAttempt,
+  ): ProviderExecutionAttempt {
+    this.#assertWritable();
+    const attempt = providerExecutionAttemptSchema.parse(input);
+    if (attempt.remoteState !== "not_dispatched") {
+      throw new Error("New provider attempts must start not_dispatched");
+    }
+    return this.#transaction(() => {
+      this.#database
+        .prepare(
+          `INSERT INTO provider_execution_attempts(
+            id, run_id, plan_id, step_id, capability_id, adapter_id,
+            adapter_version, adapter_build_digest, provider_id, transport,
+            request_digest, context_digest, effect_class,
+            recovery_capabilities_json, remote_state, budget_json,
+            created_at, updated_at, resolution_actor
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        )
+        .run(
+          attempt.id,
+          attempt.runId,
+          attempt.planId,
+          attempt.stepId,
+          attempt.capabilityId,
+          attempt.adapterId,
+          attempt.adapterVersion,
+          attempt.adapterBuildDigest,
+          attempt.providerId,
+          attempt.transport,
+          attempt.requestDigest,
+          attempt.contextDigest,
+          attempt.effectClass,
+          JSON.stringify(attempt.recoveryCapabilities),
+          attempt.remoteState,
+          JSON.stringify(attempt.budget),
+          attempt.createdAt,
+          attempt.updatedAt,
+        );
+      this.#audit.append({
+        eventType: "provider.attempt_recorded",
+        subjectId: attempt.id,
+        payload: {
+          effectClass: attempt.effectClass,
+          adapterBuildDigest: attempt.adapterBuildDigest,
+          adapterVersion: attempt.adapterVersion,
+          contextDigest: attempt.contextDigest,
+          planId: attempt.planId,
+          requestDigest: attempt.requestDigest,
+          runId: attempt.runId,
+          stepId: attempt.stepId,
+        },
+      });
+      return attempt;
+    });
+  }
+
+  findProviderExecutionAttempt(
+    attemptId: string,
+  ): ProviderExecutionAttempt | undefined {
+    this.#assertOpen();
+    const row = this.#database
+      .prepare("SELECT * FROM provider_execution_attempts WHERE id = ?")
+      .get(attemptId) as Record<string, unknown> | undefined;
+    return row ? rowToProviderExecutionAttempt(row) : undefined;
+  }
+
+  findProviderExecutionAttemptForRun(
+    runId: string,
+    stepId: string,
+  ): ProviderExecutionAttempt | undefined {
+    this.#assertOpen();
+    const row = this.#database
+      .prepare(
+        "SELECT * FROM provider_execution_attempts WHERE run_id = ? AND step_id = ?",
+      )
+      .get(runId, stepId) as Record<string, unknown> | undefined;
+    return row ? rowToProviderExecutionAttempt(row) : undefined;
+  }
+
+  updateProviderExecutionState(
+    attemptId: string,
+    remoteState: ProviderExecutionAttempt["remoteState"],
+    updatedAt: string,
+    resolutionActor?: string,
+  ): ProviderExecutionAttempt {
+    this.#assertWritable();
+    return this.#transaction(() => {
+      const current = this.findProviderExecutionAttempt(attemptId);
+      if (!current) throw new Error("Provider execution attempt not found");
+      const transitions: Readonly<
+        Record<
+          ProviderExecutionAttempt["remoteState"],
+          readonly ProviderExecutionAttempt["remoteState"][]
+        >
+      > = {
+        not_dispatched: ["dispatching"],
+        dispatching: [
+          "accepted",
+          "running",
+          "cancel_requested",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "remote_state_unknown",
+        ],
+        accepted: [
+          "running",
+          "cancel_requested",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "remote_state_unknown",
+        ],
+        running: [
+          "cancel_requested",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "remote_state_unknown",
+        ],
+        cancel_requested: [
+          "running",
+          "cancelled",
+          "failed",
+          "remote_state_unknown",
+        ],
+        remote_state_unknown: ["succeeded", "failed", "cancelled"],
+        succeeded: [],
+        failed: [],
+        cancelled: [],
+      };
+      const allowedTransitions = transitions[current.remoteState];
+      if (!allowedTransitions?.includes(remoteState)) {
+        throw new Error(
+          `Invalid provider state transition: ${current.remoteState} -> ${remoteState}`,
+        );
+      }
+      const normalizedActor = resolutionActor?.trim();
+      if (
+        current.remoteState === "remote_state_unknown" &&
+        (!normalizedActor || normalizedActor.length > 120)
+      ) {
+        throw new Error("Human resolution requires an actor");
+      }
+      if (
+        current.remoteState !== "remote_state_unknown" &&
+        normalizedActor !== undefined
+      ) {
+        throw new Error("Resolution actor is only valid after unknown state");
+      }
+      const parsed = providerExecutionAttemptSchema.parse({
+        ...current,
+        remoteState,
+        updatedAt,
+        ...(normalizedActor ? { resolutionActor: normalizedActor } : {}),
+      });
+      const result = this.#database
+        .prepare(
+          `UPDATE provider_execution_attempts
+           SET remote_state = ?, updated_at = ?, resolution_actor = ?
+           WHERE id = ? AND remote_state = ?`,
+        )
+        .run(
+          remoteState,
+          updatedAt,
+          normalizedActor ?? null,
+          attemptId,
+          current.remoteState,
+        );
+      if (result.changes !== 1) {
+        throw new Error("Provider execution attempt changed concurrently");
+      }
+      this.#audit.append({
+        eventType: normalizedActor
+          ? "provider.remote_state_resolved"
+          : "provider.remote_state_changed",
+        subjectId: attemptId,
+        payload: {
+          from: current.remoteState,
+          requestDigest: current.requestDigest,
+          runId: current.runId,
+          stepId: current.stepId,
+          to: remoteState,
+          ...(normalizedActor ? { actor: normalizedActor } : {}),
+        },
+      });
+      return parsed;
     });
   }
 
@@ -1088,7 +1343,11 @@ export class PersistenceStore {
           runs.id AS run_id,
           requests.goal,
           strategies.kind AS strategy_kind,
-          runs.status,
+          CASE WHEN EXISTS (
+            SELECT 1 FROM provider_execution_attempts AS attempts
+            WHERE attempts.run_id = runs.id
+              AND attempts.remote_state = 'remote_state_unknown'
+          ) THEN 'remote_state_unknown' ELSE runs.status END AS status,
           runs.created_at,
           runs.updated_at,
           COUNT(evidence.id) AS evidence_count
@@ -1108,7 +1367,7 @@ export class PersistenceStore {
       goal: String(row.goal),
       strategyKind:
         row.strategy_kind as PersistedExecutionHistoryEntry["strategyKind"],
-      status: row.status as ExecutionRun["status"],
+      status: row.status as PersistedExecutionHistoryEntry["status"],
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
       evidenceCount: Number(row.evidence_count),
@@ -1175,6 +1434,7 @@ export class PersistenceStore {
     for (const table of [
       "step_evidence",
       "provider_checkpoints",
+      "provider_execution_attempts",
       "memory_entries",
     ] as const) {
       const rows = this.#database
@@ -1267,6 +1527,7 @@ export class PersistenceStore {
       const bindings = [workspaceId, cutoff];
       for (const [table, column, subquery] of [
         ["memory_entries", "source_run_id", runs],
+        ["provider_execution_attempts", "run_id", runs],
         ["provider_checkpoints", "run_id", runs],
         ["step_evidence", "run_id", runs],
         ["approvals", "plan_id", plans],
@@ -1324,6 +1585,10 @@ export class PersistenceStore {
       approvals: rows("approvals", `plan_id IN (${planFilter})`),
       runs: rows("execution_runs", `request_id IN (${requestFilter})`),
       evidence: rows("step_evidence", `run_id IN (${runFilter})`),
+      providerExecutionAttempts: rows(
+        "provider_execution_attempts",
+        `run_id IN (${runFilter})`,
+      ),
       checkpoints: rows("provider_checkpoints", `run_id IN (${runFilter})`),
       memory: rows("memory_entries", `source_run_id IN (${runFilter})`),
       auditEvents: this.listWorkspaceAuditEvents(

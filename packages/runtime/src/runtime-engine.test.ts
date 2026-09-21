@@ -4,6 +4,7 @@ import type {
   ActionRequest,
   ExecutionDescriptor,
   OrchestrationPreview,
+  PlannedStep,
   PolicyProfile,
   ProviderStreamEvent,
 } from "@trivergence/contracts";
@@ -243,6 +244,112 @@ class ContextDispatcher implements StepDispatcher {
     return this.execute(context);
   }
 }
+
+class RemoteProviderDispatcher implements StepDispatcher {
+  readonly capabilityId = "provider.test.prompt.structured";
+  readonly subsystem = "provider" as const;
+  calls = 0;
+
+  constructor(
+    private readonly execute: (
+      context: DispatchContext,
+    ) => Promise<DispatchResult> | DispatchResult,
+    private readonly recoveryCapabilities: readonly (
+      | "local_checkpoint"
+      | "stream_reconnect"
+      | "operation_query"
+      | "operation_resume"
+      | "idempotent_retry"
+      | "remote_cancel"
+      | "exact_recovery"
+    )[] = [],
+  ) {}
+
+  describe(step: PlannedStep): ExecutionDescriptor {
+    return {
+      version: "1",
+      kind: "provider",
+      capabilityId: this.capabilityId,
+      capabilityVersion: "1",
+      subsystem: this.subsystem,
+      summary: "Proveedor remoto de prueba",
+      argv: [],
+      environmentNames: [],
+      environmentDigest: EMPTY_ENVIRONMENT_DIGEST,
+      networkDestinations: ["https://provider.test"],
+      targets: [],
+      providerRequest: {
+        schemaVersion: "2",
+        adapterId: "trivergence.test-provider",
+        providerId: "test-provider",
+        operation: "prompt_structured",
+        transport: "http_stream",
+        context: {
+          destination: "https://provider.test",
+          networkRequired: true,
+          promptBytes: 12,
+          promptDigest: "c".repeat(64),
+          items: [],
+          totalBytes: 12,
+          redactionApplied: false,
+        },
+        budget: {
+          maxInputBytes: 4_096,
+          maxOutputBytes: 8_192,
+          maxChunks: 64,
+          timeoutMs: 30_000,
+          maxCostMicrounits: 50_000,
+        },
+        adapterVersion: "1",
+        adapterBuildDigest: "d".repeat(64),
+        requestDigest: sha256(`request:${step.action.id}`),
+        contextDigest: "e".repeat(64),
+        recoveryCapabilities: [...this.recoveryCapabilities],
+      },
+    };
+  }
+
+  async dispatch(context: DispatchContext) {
+    this.calls += 1;
+    return await this.execute(context);
+  }
+}
+
+const makeProviderPreview = (
+  effectClass: ActionRequest["effectClass"] = "side_effectful",
+): OrchestrationPreview => {
+  const providerAction = {
+    ...action("guarded", ["execute", "network"]),
+    tool: "testProvider.promptStructured",
+    effectClass,
+  };
+  const base = makePreview("assistant", providerAction);
+  const strategy = {
+    ...base.strategy,
+    capabilityIds: ["provider.test.prompt.structured"],
+  };
+  return {
+    ...base,
+    request: {
+      ...base.request,
+      requestedCapabilities: ["provider.test.prompt.structured"],
+      privacyMode: "standard",
+    },
+    strategy,
+    plan: {
+      ...base.plan,
+      strategy,
+      steps: [
+        {
+          ...base.plan.steps[0]!,
+          capabilityId: "provider.test.prompt.structured",
+          subsystem: "provider",
+          action: providerAction,
+        },
+      ],
+    },
+  };
+};
 
 describe("RuntimeEngine", () => {
   it("executes an allowed persisted step and records evidence", async () => {
@@ -516,6 +623,152 @@ describe("RuntimeEngine", () => {
     store.close();
   });
 
+  it("stops with explicit unknown state after a possibly dispatched request loses its response", async () => {
+    const preview = makeProviderPreview("irreversible");
+    const dispatcher = new RemoteProviderDispatcher(() => {
+      throw new Error("Connection lost after request bytes were sent");
+    }, ["idempotent_retry"]);
+    const { runtime, store } = runtimeFixture(preview, dispatcher);
+    const approval = runtime.requestApproval(preview, "step-1");
+    runtime.decideApproval(approval.id, "grant", "recovery-test-user");
+
+    const result = await runtime.execute(preview, {
+      approvalIds: { "step-1": approval.id },
+    });
+    const attempt = store.findProviderExecutionAttemptForRun(
+      result.runId!,
+      "step-1",
+    );
+
+    expect(result).toMatchObject({
+      status: "remote_state_unknown",
+      evidenceCount: 0,
+    });
+    expect(dispatcher.calls).toBe(1);
+    expect(attempt).toMatchObject({
+      adapterId: "trivergence.test-provider",
+      adapterVersion: "1",
+      adapterBuildDigest: "d".repeat(64),
+      providerId: "test-provider",
+      transport: "http_stream",
+      contextDigest: "e".repeat(64),
+      effectClass: "irreversible",
+      remoteState: "remote_state_unknown",
+      recoveryCapabilities: ["idempotent_retry"],
+      budget: { maxCostMicrounits: 50_000 },
+    });
+    expect(store.findRun(result.runId!)?.status).toBe("orphaned");
+    expect(
+      store
+        .listAuditEvents()
+        .some(
+          (event) =>
+            event.eventType === "provider.remote_state_changed" &&
+            event.subjectId === attempt?.id &&
+            event.payload["to"] === "remote_state_unknown",
+        ),
+    ).toBe(true);
+    store.close();
+  });
+
+  it("does not turn an unconfirmed remote cancellation into cancelled", async () => {
+    const preview = makeProviderPreview("side_effectful");
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const dispatcher = new RemoteProviderDispatcher(
+      (context) =>
+        new Promise<DispatchResult>((resolve) => {
+          markStarted();
+          context.signal.addEventListener(
+            "abort",
+            () =>
+              resolve({
+                outcome: "remote_state_unknown",
+                remoteState: "remote_state_unknown",
+                summary: "Cancel request was sent but not acknowledged",
+              }),
+            { once: true },
+          );
+        }),
+      ["remote_cancel"],
+    );
+    const { runtime, store } = runtimeFixture(preview, dispatcher);
+    const approval = runtime.requestApproval(preview, "step-1");
+    runtime.decideApproval(approval.id, "grant", "recovery-test-user");
+
+    const completion = runtime.execute(preview, {
+      approvalIds: { "step-1": approval.id },
+    });
+    await started;
+    expect(runtime.cancel("50000000-0000-4000-8000-000000000001")).toBe(true);
+    const result = await completion;
+    const attempt = store.findProviderExecutionAttemptForRun(
+      result.runId!,
+      "step-1",
+    );
+
+    expect(result.status).toBe("remote_state_unknown");
+    expect(dispatcher.calls).toBe(1);
+    expect(attempt?.remoteState).toBe("remote_state_unknown");
+    store.close();
+  });
+
+  it("requires an attributed human decision to resolve unknown remote state", async () => {
+    const preview = makeProviderPreview("side_effectful");
+    const { runtime, store } = runtimeFixture(
+      preview,
+      new RemoteProviderDispatcher(() => {
+        throw new Error("Response lost");
+      }),
+    );
+    const approval = runtime.requestApproval(preview, "step-1");
+    runtime.decideApproval(approval.id, "grant", "recovery-test-user");
+    const result = await runtime.execute(preview, {
+      approvalIds: { "step-1": approval.id },
+    });
+    const attempt = store.findProviderExecutionAttemptForRun(
+      result.runId!,
+      "step-1",
+    )!;
+
+    expect(() =>
+      store.updateProviderExecutionState(
+        attempt.id,
+        "failed",
+        new Date(NOW).toISOString(),
+      ),
+    ).toThrow(/requires an actor/u);
+    expect(
+      runtime.resolveUnknownProviderExecution(
+        attempt.id,
+        "failed",
+        "local-reviewer",
+      ),
+    ).toMatchObject({
+      remoteState: "failed",
+      resolutionActor: "local-reviewer",
+    });
+    expect(() =>
+      runtime.resolveUnknownProviderExecution(
+        attempt.id,
+        "succeeded",
+        "local-reviewer",
+      ),
+    ).toThrow(/Invalid provider state transition/u);
+    expect(
+      store
+        .listAuditEvents()
+        .some(
+          (event) =>
+            event.eventType === "provider.remote_state_resolved" &&
+            event.payload["actor"] === "local-reviewer",
+        ),
+    ).toBe(true);
+    store.close();
+  });
+
   it("does not persist private goals, arguments or dispatcher errors", async () => {
     const secret = "PRIVATE_RUNTIME_SECRET_9f6a";
     const privateAction = {
@@ -578,6 +831,87 @@ describe("RuntimeEngine", () => {
     expect(
       fixture.store.findRun("80000000-0000-4000-8000-000000000001")?.status,
     ).toBe("orphaned");
+    fixture.store.close();
+  });
+
+  it("distinguishes a crash before dispatch from one after possible dispatch", () => {
+    const preview = makeProviderPreview("side_effectful");
+    const fixture = runtimeFixture(
+      preview,
+      new RemoteProviderDispatcher(() => ({
+        outcome: "succeeded",
+        remoteState: "succeeded",
+        summary: "unused",
+      })),
+    );
+    const seed = (
+      runId: string,
+      attemptId: string,
+      remoteState: "not_dispatched" | "dispatching",
+    ) => {
+      fixture.store.createRun({
+        id: runId,
+        requestId: preview.request.id,
+        planId: preview.plan.id,
+        registrySnapshotId: preview.registrySnapshot.id,
+        planDigest: preview.planIntegrity.digest,
+        status: "planned",
+        createdAt: new Date(NOW).toISOString(),
+        updatedAt: new Date(NOW).toISOString(),
+      });
+      fixture.store.updateRunStatus(
+        runId,
+        "running",
+        new Date(NOW).toISOString(),
+      );
+      fixture.store.saveProviderExecutionAttempt({
+        id: attemptId,
+        runId,
+        planId: preview.plan.id,
+        stepId: "step-1",
+        capabilityId: "provider.test.prompt.structured",
+        adapterId: "trivergence.test-provider",
+        adapterVersion: "1",
+        adapterBuildDigest: "d".repeat(64),
+        providerId: "test-provider",
+        transport: "http_stream",
+        requestDigest: sha256(runId),
+        contextDigest: "e".repeat(64),
+        effectClass: "side_effectful",
+        recoveryCapabilities: [],
+        remoteState: "not_dispatched",
+        budget: {
+          maxInputBytes: 4_096,
+          maxOutputBytes: 8_192,
+          maxChunks: 64,
+          timeoutMs: 30_000,
+          maxCostMicrounits: 50_000,
+        },
+        createdAt: new Date(NOW).toISOString(),
+        updatedAt: new Date(NOW).toISOString(),
+      });
+      if (remoteState === "dispatching") {
+        fixture.store.updateProviderExecutionState(
+          attemptId,
+          "dispatching",
+          new Date(NOW).toISOString(),
+        );
+      }
+    };
+    const beforeRun = "81000000-0000-4000-8000-000000000001";
+    const afterRun = "82000000-0000-4000-8000-000000000001";
+    const beforeAttempt = "83000000-0000-4000-8000-000000000001";
+    const afterAttempt = "84000000-0000-4000-8000-000000000001";
+    seed(beforeRun, beforeAttempt, "not_dispatched");
+    seed(afterRun, afterAttempt, "dispatching");
+
+    expect(fixture.runtime.recoverOrphans()).toEqual([beforeRun, afterRun]);
+    expect(
+      fixture.store.findProviderExecutionAttempt(beforeAttempt)?.remoteState,
+    ).toBe("not_dispatched");
+    expect(
+      fixture.store.findProviderExecutionAttempt(afterAttempt)?.remoteState,
+    ).toBe("remote_state_unknown");
     fixture.store.close();
   });
 });

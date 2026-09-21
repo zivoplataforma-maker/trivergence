@@ -54,6 +54,7 @@ const RUN_LABELS: Record<WorkspaceExecutionState["status"], string> = {
   cancelled: "Ejecución cancelada",
   timed_out: "Tiempo agotado",
   orphaned: "Ejecución huérfana",
+  remote_state_unknown: "Estado remoto desconocido",
 };
 
 const messageFrom = (error: unknown, fallback: string) =>
@@ -575,7 +576,9 @@ function App() {
                 {persistenceStatus.recoveredRuns > 0 && (
                   <p>
                     {persistenceStatus.recoveredRuns} ejecución(es)
-                    interrumpida(s) fueron marcadas como huérfanas.
+                    interrumpida(s) requieren revisión. Cuando un envío remoto
+                    pudo ocurrir, Trivergence lo muestra como estado desconocido
+                    y no lo reintenta automáticamente.
                   </p>
                 )}
                 <p>
@@ -676,8 +679,8 @@ function App() {
                         <dt>Recuperación</dt>
                         <dd>
                           {workspace.recoveredRuns > 0
-                            ? `${workspace.recoveredRuns} run(s) marcados orphaned`
-                            : "Sin runs huérfanos"}
+                            ? `${workspace.recoveredRuns} ejecución(es) interrumpida(s) por revisar`
+                            : "Sin ejecuciones interrumpidas"}
                         </dd>
                       </div>
                       <div>
@@ -1075,6 +1078,14 @@ function App() {
                 {executionError && (
                   <p className="error" role="alert">
                     {executionError}
+                  </p>
+                )}
+                {run?.status === "remote_state_unknown" && (
+                  <p className="error" role="alert">
+                    El proveedor pudo haber recibido o completado la operación.
+                    Trivergence detuvo el workflow, preservó la evidencia y no
+                    hará un reintento automático. Revisa la auditoría antes de
+                    decidir el resultado.
                   </p>
                 )}
                 {run && (

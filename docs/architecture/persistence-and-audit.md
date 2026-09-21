@@ -29,6 +29,9 @@ StepEvidence ─────────┘          │
 - `provider_checkpoints`: cursor y digests de recuperación ligados a
   run/plan/step/capability/adapter/proveedor, con estado `active`/`consumed` y
   unicidad por run/paso;
+- `provider_execution_attempts`: frontera durable de dispatch con request
+  digest, clase de efecto, capabilities, budget, estado remoto y actor de una
+  eventual resolución humana; unicidad por run/paso;
 - `memory_entries`: memoria funcional por workspace con contenido/digest,
   provenance, run/plan/step y expiración; un trigger impide reescrituras salvo
   vaciar contenido/provenance al marcar borrado;
@@ -39,8 +42,8 @@ StepEvidence ─────────┘          │
 Los payloads de auditoría admiten hasta 64 campos escalares. No se guardan
 objetivos, outputs completos, tokens, rutas sensibles ni secretos en esos
 eventos. Los datos funcionales conservan sus límites Zod antes de llegar a SQL.
-Los checkpoints no contienen prompt, contexto ni respuesta; sus eventos de
-auditoría registran únicamente identidad y digests.
+Los checkpoints y attempts no contienen prompt, contexto ni respuesta; sus
+eventos de auditoría registran únicamente identidad, estados y digests.
 
 En modo privado, las nuevas solicitudes persisten un marcador en vez del
 objetivo y un objeto vacío en vez de los argumentos de cada paso. La ejecución
@@ -104,6 +107,8 @@ Las pruebas cubren:
 - creación, validación y restauración de backup.
 - transiciones terminales de run, decisiones y consumo atómico de aprobación.
 - upsert acotado, consulta y consumo único de checkpoints de proveedor.
+- transición cerrada de attempts, UNKNOWN tras crash posterior al dispatch,
+  resolución humana atribuida, exportación y borrado por retención.
 - commit inmutable, recall acotado, borrado, poda y eventos content-free de
   memoria M6.
 

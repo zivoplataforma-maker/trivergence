@@ -109,9 +109,9 @@ export class ProviderStepDispatcher implements StepDispatcher {
     return {
       outcome: result.outcome,
       summary: result.error?.message ?? `Provider ${result.outcome}`,
+      ...(result.remoteState ? { remoteState: result.remoteState } : {}),
       output: result,
       outputDigest: sha256(canonicalizeJson(result)),
-      treeTerminationConfirmed: true,
     };
   }
 }

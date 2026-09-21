@@ -39,8 +39,11 @@ Preview persistido + Registry vigente
   antes del efecto;
 - dependencias se completan antes del paso dependiente;
 - cada paso genera como máximo una evidencia terminal;
-- fallos, timeout y cancelación detienen el plan; Runtime no inventa retries. Un
-  adaptador puede declarar una recuperación acotada y validada por checkpoint;
+- fallos, timeout y cancelación detienen el plan; Runtime no inventa retries;
+- si un envío remoto pudo ocurrir y no hay evidencia terminal, el workflow
+  termina en `remote_state_unknown`, sin duplicar efectos ni budgets;
+- cada acción conserva su clase `pure`, `read_only`, `reversible`,
+  `side_effectful` o `irreversible` para decidir recovery conservador;
 - un árbol no confirmado produce `orphaned`.
 
 ## Estados del run
@@ -51,10 +54,17 @@ planned ──► awaiting_approval ──► approved ──► running ──�
    │                │                 │           ├──────► cancelled
    │                │                 │           ├──────► timed_out
    └────────────────┴─────────────────┴───────────└──────► orphaned
+
+Provider attempt:
+not_dispatched ─► dispatching ─► accepted/running ─► succeeded/failed/cancelled
+                         └─────────────────────────► remote_state_unknown
 ```
 
-Los estados terminales no admiten transición. Al iniciar, todo run `running` sin
-supervisor vivo se marca `orphaned`; nunca se reanuda automáticamente.
+Los estados terminales del run no admiten transición. Al iniciar, todo run
+`running` sin supervisor vivo se marca `orphaned`; un intento remoto que había
+cruzado el límite de dispatch además queda `remote_state_unknown`. Este último
+solo puede resolverse a terminal con una decisión humana atribuida. Nunca se
+reanuda automáticamente.
 
 ## Dispatcher
 
@@ -74,7 +84,10 @@ dispatcher genérico expuesto al renderer.
 preview, compara el descriptor, retransmite eventos tipados y delega en el
 adaptador registrado. Runtime persiste checkpoints correlacionados y exige una
 nueva aprobación para una ejecución recuperada. El callback que muestra el
-stream está aislado y no controla el outcome.
+stream está aislado y no controla el outcome. Antes de llamar al host, Runtime
+persiste el attempt y cambia a `dispatching`. Si el dispatcher lanza, devuelve
+estado incierto o entrega un resultado inválido, Runtime conserva UNKNOWN y no
+produce evidencia terminal inventada.
 
 ## Proceso local P0
 
@@ -90,7 +103,10 @@ decisión están en [ADR-0004](adr/0004-runtime-process-supervision.md).
 - approval ausente/denied/expired bloquea;
 - approval granted se consume una vez;
 - timeout y cancel cambian el run y detienen el árbol;
-- recovery transforma runs `running` en `orphaned`;
+- startup recovery transforma runs `running` en `orphaned` y marca UNKNOWN solo
+  los attempts que pudieron cruzar dispatch;
 - recovery de proveedor rechaza checkpoint adulterado, cruzado o consumido y
   funciona tras reiniciar Runtime con una aprobación nueva;
+- provider sin exact recovery detiene el workflow en UNKNOWN, no reintenta y
+  permite resolución humana auditada;
 - en Windows una prueba real demuestra que `/T` termina padre y descendiente.

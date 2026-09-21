@@ -271,6 +271,48 @@ export const migrations: readonly Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: "0007_provider_execution_attempts",
+    sql: `
+      CREATE TABLE provider_execution_attempts (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL,
+        step_id TEXT NOT NULL,
+        capability_id TEXT NOT NULL,
+        adapter_id TEXT NOT NULL,
+        adapter_version TEXT NOT NULL,
+        adapter_build_digest TEXT NOT NULL CHECK (length(adapter_build_digest) = 64),
+        provider_id TEXT NOT NULL,
+        transport TEXT NOT NULL CHECK (transport IN (
+          'in_memory_stream', 'stdio_jsonl', 'http_stream'
+        )),
+        request_digest TEXT NOT NULL CHECK (length(request_digest) = 64),
+        context_digest TEXT NOT NULL CHECK (length(context_digest) = 64),
+        effect_class TEXT NOT NULL CHECK (effect_class IN (
+          'pure', 'read_only', 'reversible', 'side_effectful', 'irreversible'
+        )),
+        recovery_capabilities_json TEXT NOT NULL,
+        remote_state TEXT NOT NULL CHECK (remote_state IN (
+          'not_dispatched', 'dispatching', 'accepted', 'running',
+          'cancel_requested', 'succeeded', 'failed', 'cancelled',
+          'remote_state_unknown'
+        )),
+        budget_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        resolution_actor TEXT,
+        FOREIGN KEY (run_id, plan_id) REFERENCES execution_runs(id, plan_id),
+        FOREIGN KEY (plan_id, step_id) REFERENCES plan_steps(plan_id, step_id),
+        UNIQUE (run_id, step_id)
+      ) STRICT;
+
+      CREATE INDEX provider_execution_attempts_state_idx
+        ON provider_execution_attempts(remote_state, updated_at);
+      CREATE INDEX provider_execution_attempts_request_idx
+        ON provider_execution_attempts(request_digest, remote_state);
+    `,
+  },
 ];
 
 const checksum = (sql: string) =>

@@ -121,7 +121,10 @@ despacha únicamente pasos autorizados.
    expiración.
 8. Runtime revalida plan, registry, política y aprobación antes de cada paso.
 9. El subsistema correspondiente ejecuta con timeout, cancelación y límites.
-10. Evaluation Engine consume evidencia; auditoría persiste la cadena completa y
+10. Si un provider pudo recibir el request pero su resultado no es demostrable,
+    Runtime detiene el workflow en `remote_state_unknown`; nunca infiere éxito,
+    fallo ni cancelación.
+11. Evaluation Engine consume evidencia; auditoría persiste la cadena completa y
     sanitizada.
 
 Si no se puede resolver una capacidad, validar un plan o registrar una acción
@@ -151,8 +154,10 @@ Los valores se ajustan con medición y ADR, no silenciosamente.
 
 ## Fallos y recuperación
 
-- Runs no terminales pasan a `orphaned` al reiniciar; nunca se muestran activos.
-- Un crash no reinicia automáticamente una acción con efectos.
+- Runs no terminales pasan a `orphaned` al reiniciar; los attempts que pudieron
+  despacharse pasan además a `remote_state_unknown`.
+- Un crash no reinicia automáticamente una acción remota incierta, aunque el
+  provider declare idempotencia; una recuperación es explícita y auditada.
 - Un snapshot de registry obsoleto obliga a replanificar.
 - Corrupción de DB abre recuperación de solo lectura.
 - Una evaluación bloqueada conserva motivos estructurados y no ofrece ejecutar.

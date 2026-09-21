@@ -1,6 +1,6 @@
 # Estado de implementación
 
-Última actualización: 2026-09-15
+Última actualización: 2026-09-21
 
 Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 `PLANNED` no iniciado, `BLOCKED` requiere una decisión o dependencia externa.
@@ -15,6 +15,35 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 | M5 — primer conector                | PARTIAL | Contrato/Reference Provider local verificados; ningún proveedor externo superó aún su gate.                        |
 | M6 — workflows, agentes y memoria   | DONE    | Pipeline local de cinco pasos, budgets, provenance, memoria, evaluación, auditoría, E2E y build verificados.       |
 | M7 — hardening/distribución Windows | PARTIAL | Controles y paquete unsigned verificados localmente; faltan reproducibilidad NSIS, firma y matriz limpia Win10/11. |
+
+## M5-B0 — contrato de recovery (2026-09-21)
+
+Estado: `DONE` para la revisión y refactorización interna; M5 continúa
+`PARTIAL`. [ADR-0011](docs/architecture/adr/0011-recovery-semantics.md) separa
+recovery exacto del provider de recuperación segura de la orquestación.
+
+- `ProviderAdapter` declara capabilities explícitas y `recover` es opcional;
+- Runtime persiste el attempt antes del dispatch con request digest, clase de
+  efecto, budget y estado remoto;
+- pérdida de respuesta, stream o confirmación de cancelación produce
+  `remote_state_unknown`, detiene dependencias y nunca dispara retry automático;
+- checkpoints solo se consumen después de resultado terminal verificado;
+- UNKNOWN requiere resolución humana atribuida y deja audit trail;
+- UI e historial muestran la incertidumbre sin convertirla en éxito o fallo;
+- las 14 comprobaciones se mantienen: providers sin exact recovery deben probar
+  el límite UNKNOWN del sistema, no simular una reanudación;
+- Codex, Claude y Vertex pierden únicamente el bloqueo técnico universal por
+  exact recovery; sus gates externos permanecen intactos. Gemini Interactions
+  conserva capabilities candidatas sujetas a adapter y pruebas reales.
+
+Reference Provider continúa siendo el único ejecutable. No se construyó ni
+habilitó ningún provider externo, no cambió autenticación/trust store y M7 no se
+tocó.
+
+Evidencia local final: formato, lint, build y typecheck de 12 proyectos; **149
+tests**; Electron E2E y smoke; auditoría sin vulnerabilidades conocidas; SBOM
+CycloneDX verificado con 451 componentes. La ejecución Windows de CI se registra
+en el commit de esta fase.
 
 ## M5-A — Gate definitivo de Codex App Server (2026-09-15)
 
