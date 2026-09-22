@@ -27,7 +27,8 @@ riesgo.
 | M5-B0 — semántica de recovery          | `DONE`    |
 | P3-0 — documentación y ADRs            | `DONE`    |
 | P3-0.1 — revisión técnica de ADRs      | `DONE`    |
-| P3 — evolución arquitectónica          | `PLANNED` |
+| P3-A1 — Project Context mínimo         | `DONE`    |
+| P3 — evolución arquitectónica          | `PARTIAL` |
 
 M5 y M7 son puertas independientes. P3 no autoriza a marcar ninguno de ellos
 como completo.
@@ -206,16 +207,19 @@ M7 permanecen `PARTIAL`; Reference Provider continúa como único ejecutable.
 
 ## P3-A1 — Project Context mínimo
 
-Estado: `PLANNED`. Dependencia documental: P3-0.1 completado.
+Estado: `DONE` (2026-09-22). Dependencia documental: P3-0.1 completado.
 
 Objetivo: snapshot operacional versionado por workspace que reúna objetivo,
 restricciones, policy, capabilities, budgets y referencias autorizadas a Memory,
 Audit/Evidence y recursos. No es un índice inteligente ni una nueva base de
 verdad.
 
-Puerta de salida futura: contrato versionado, límites/retención/private mode,
-provenance de cada referencia, invalidación determinista y consumo por Strategy
-sin saltarse budgets.
+Puerta de salida verificada: contrato `ProjectContextSnapshot` v1, builder único
+y determinista, referencias/digests con provenance, límite de 16 KiB, retención
+y private mode, persistencia SQLite inmutable para modo estándar y consumo por
+Strategy. Los límites se reflejan sin copiar consumo del Runtime; Registry,
+Memory, Audit y Evidence continúan como fuentes de verdad. Reference Provider
+continúa siendo el único provider ejecutable.
 
 ## P3-D0 — contrato de Execution Gateway
 

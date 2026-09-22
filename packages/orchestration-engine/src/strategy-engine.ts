@@ -2,6 +2,7 @@ import {
   strategyDecisionSchema,
   type CapabilityDescriptor,
   type OrchestrationRequest,
+  type ProjectContextSnapshot,
   type StrategyDecision,
   type StrategyRouteCandidate,
 } from "@trivergence/contracts";
@@ -42,7 +43,23 @@ export class StrategyEngine {
   select(
     request: OrchestrationRequest,
     registry: CapabilityRegistry,
+    projectContext: ProjectContextSnapshot,
   ): StrategyDecision {
+    if (
+      projectContext.objective.requestId !== request.id ||
+      projectContext.workspace.id !==
+        (request.workspaceId ?? "00000000-0000-4000-8000-000000000000") ||
+      projectContext.governance.profile !== request.profile ||
+      projectContext.governance.privacyMode !==
+        (request.privacyMode ?? "private")
+    ) {
+      throw new Error(
+        "Project Context does not match the orchestration request",
+      );
+    }
+    const contextCapabilities = new Set(
+      projectContext.capabilities.references.map((capability) => capability.id),
+    );
     const explicit = request.requestedCapabilities.length > 0;
     const definitions = explicit
       ? [
@@ -55,7 +72,11 @@ export class StrategyEngine {
         ]
       : registry
           .list()
-          .filter((capability) => capability.routing !== undefined)
+          .filter(
+            (capability) =>
+              capability.routing !== undefined &&
+              contextCapabilities.has(capability.id),
+          )
           .map((capability) => ({
             id: capability.id,
             capabilityIds: [capability.id],

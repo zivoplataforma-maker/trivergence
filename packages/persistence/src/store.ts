@@ -8,6 +8,7 @@ import {
   executionRunSchema,
   orchestrationPreviewSchema,
   planExecutionBindingSchema,
+  projectContextSnapshotSchema,
   providerCheckpointRecordSchema,
   providerExecutionAttemptSchema,
   stepEvidenceSchema,
@@ -18,6 +19,7 @@ import {
   type ExecutionRun,
   type OrchestrationPreview,
   type PlanExecutionBinding,
+  type ProjectContextSnapshot,
   type ProviderCheckpointRecord,
   type ProviderExecutionAttempt,
   type StepEvidence,
@@ -407,6 +409,44 @@ export class PersistenceStore {
           preview.request.workspaceId ?? null,
           preview.request.privacyMode ?? "private",
         );
+      if (preview.projectContext.governance.privacyMode === "standard") {
+        const snapshotJson = JSON.stringify(preview.projectContext);
+        if (Buffer.byteLength(snapshotJson, "utf8") > 65_536) {
+          throw new Error("Project Context exceeds 65536 bytes");
+        }
+        const expiresAt = new Date(
+          Date.parse(preview.projectContext.createdAt) +
+            preview.projectContext.governance.retentionDays * 86_400_000,
+        ).toISOString();
+        this.#database
+          .prepare(
+            `INSERT INTO project_context_snapshots(
+              context_id, revision, request_id, workspace_id, schema_version,
+              snapshot_json, digest, created_at, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            preview.projectContext.id,
+            preview.projectContext.revision,
+            preview.request.id,
+            preview.projectContext.workspace.id,
+            preview.projectContext.schemaVersion,
+            snapshotJson,
+            preview.projectContext.digest,
+            preview.projectContext.createdAt,
+            expiresAt,
+          );
+        this.#audit.append({
+          eventType: "project_context.snapshot_persisted",
+          subjectId: preview.projectContext.id,
+          payload: {
+            digest: preview.projectContext.digest,
+            requestId: preview.request.id,
+            revision: preview.projectContext.revision,
+            workspaceId: preview.projectContext.workspace.id,
+          },
+        });
+      }
       this.#database
         .prepare(
           `INSERT INTO capability_snapshots(
@@ -1423,6 +1463,12 @@ export class PersistenceStore {
       )
       .all(workspaceId) as { id: string }[];
     for (const row of plans) subjects.add(row.id);
+    const projectContexts = this.#database
+      .prepare(
+        "SELECT context_id FROM project_context_snapshots WHERE workspace_id = ?",
+      )
+      .all(workspaceId) as { context_id: string }[];
+    for (const row of projectContexts) subjects.add(row.context_id);
     const runs = this.#database
       .prepare(
         `SELECT runs.id FROM execution_runs AS runs
@@ -1460,6 +1506,50 @@ export class PersistenceStore {
       .filter((event) => subjects.has(event.subjectId))
       .slice(-limit)
       .reverse();
+  }
+
+  findLatestProjectContext(
+    workspaceId: string,
+  ): ProjectContextSnapshot | undefined {
+    this.#assertOpen();
+    if (!workspaceId) throw new Error("Invalid workspace id");
+    const row = this.#database
+      .prepare(
+        `SELECT snapshot_json FROM project_context_snapshots
+         WHERE workspace_id = ? AND expires_at > ?
+         ORDER BY created_at DESC, revision DESC LIMIT 1`,
+      )
+      .get(workspaceId, this.#clock().toISOString()) as
+      { snapshot_json: string } | undefined;
+    return row
+      ? projectContextSnapshotSchema.parse(JSON.parse(row.snapshot_json))
+      : undefined;
+  }
+
+  pruneExpiredProjectContexts(workspaceId: string, now: string): number {
+    this.#assertWritable();
+    if (!workspaceId || !Number.isFinite(Date.parse(now))) {
+      throw new Error("Invalid Project Context retention boundary");
+    }
+    return this.#transaction(() => {
+      const result = this.#database
+        .prepare(
+          `DELETE FROM project_context_snapshots
+           WHERE workspace_id = ? AND expires_at <= ?`,
+        )
+        .run(workspaceId, now);
+      if (result.changes > 0) {
+        this.#audit.append({
+          eventType: "privacy.workspace_data_deleted",
+          subjectId: workspaceId,
+          payload: {
+            deletedProjectContexts: Number(result.changes),
+            retention: true,
+          },
+        });
+      }
+      return Number(result.changes);
+    });
   }
 
   getWorkspaceRetention(workspaceId: string): number {
@@ -1574,6 +1664,7 @@ export class PersistenceStore {
       workspaceId,
       retentionDays: this.getWorkspaceRetention(workspaceId),
       requests: rows("orchestration_requests", "workspace_id = ?"),
+      projectContexts: rows("project_context_snapshots", "workspace_id = ?"),
       plans: rows("execution_plans", `request_id IN (${requestFilter})`),
       capabilitySnapshots: rows(
         "capability_snapshots",

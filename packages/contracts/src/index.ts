@@ -485,8 +485,139 @@ export type CapabilitySnapshotIdentity = z.infer<
   typeof capabilitySnapshotIdentitySchema
 >;
 
+const projectContextReferenceIdSchema = z
+  .string()
+  .min(1)
+  .max(120)
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u,
+    "Reference IDs must be opaque identifiers",
+  );
+
+export const projectContextSourceReferenceSchema = z.object({
+  kind: z.enum([
+    "workspace",
+    "workspace_resource",
+    "objective_restriction",
+    "memory",
+    "audit",
+    "evidence",
+  ]),
+  sourceId: projectContextReferenceIdSchema,
+  workspaceId: z.string().uuid(),
+  version: z.string().min(1).max(80),
+  digest: sha256DigestSchema,
+  trust: z.enum(["trusted_metadata", "untrusted_data"]),
+  provenance: z.object({
+    origin: z.enum(["user", "workspace", "registry", "policy", "persistence"]),
+    observedAt: z.iso.datetime(),
+    digest: sha256DigestSchema,
+  }),
+});
+export type ProjectContextSourceReference = z.infer<
+  typeof projectContextSourceReferenceSchema
+>;
+
+export const projectContextCapabilityReferenceSchema = z.object({
+  id: capabilityIdSchema,
+  version: z.string().min(1).max(40),
+  status: capabilityStatusSchema,
+  descriptorDigest: sha256DigestSchema,
+});
+export type ProjectContextCapabilityReference = z.infer<
+  typeof projectContextCapabilityReferenceSchema
+>;
+
+export const projectContextBudgetLimitsSchema = z.object({
+  maxAgents: z.number().int().min(1).max(3),
+  maxProviderCalls: z.number().int().min(1).max(4),
+  maxOutputBytes: z.number().int().min(256).max(65_536),
+  maxMemoryItems: z.number().int().min(0).max(16),
+  maxMemoryBytes: z.number().int().min(0).max(65_536),
+  timeoutMs: z.number().int().min(100).max(60_000),
+  maxReplans: z.number().int().min(0).max(1),
+});
+export type ProjectContextBudgetLimits = z.infer<
+  typeof projectContextBudgetLimitsSchema
+>;
+
+export const projectContextSnapshotSchema = z
+  .object({
+    schemaVersion: z.literal("1"),
+    id: z.string().uuid(),
+    revision: z.number().int().positive(),
+    createdAt: z.iso.datetime(),
+    workspace: z.object({
+      id: z.string().uuid(),
+      fingerprint: sha256DigestSchema,
+    }),
+    objective: z.object({
+      requestId: z.string().uuid(),
+      goalDigest: sha256DigestSchema,
+      restrictionReferences: z
+        .array(projectContextSourceReferenceSchema)
+        .max(32),
+    }),
+    governance: z.object({
+      profile: policyProfileSchema,
+      privacyMode: z.enum(["private", "standard"]),
+      retentionDays: z.number().int().min(1).max(365),
+      restrictions: z
+        .array(
+          z.enum([
+            "workspace_root_only",
+            "mandatory_exclusions",
+            "no_credential_material",
+            "untrusted_content_is_data",
+          ]),
+        )
+        .min(4)
+        .max(4),
+    }),
+    capabilities: z.object({
+      registrySnapshot: capabilitySnapshotIdentitySchema,
+      references: z
+        .array(projectContextCapabilityReferenceSchema)
+        .min(1)
+        .max(64),
+    }),
+    budget: z.object({
+      limits: projectContextBudgetLimitsSchema,
+      consumptionAuthority: z.literal("runtime"),
+    }),
+    sources: z.array(projectContextSourceReferenceSchema).min(1).max(64),
+    provenance: z.object({
+      builderVersion: z.literal("1"),
+      canonicalizationVersion: z.literal("1"),
+      inputDigest: sha256DigestSchema,
+      sourceDigests: z.array(sha256DigestSchema).min(1).max(96),
+    }),
+    digest: sha256DigestSchema,
+  })
+  .superRefine((snapshot, context) => {
+    const references = [
+      ...snapshot.sources,
+      ...snapshot.objective.restrictionReferences,
+    ];
+    if (
+      references.some(
+        (reference) => reference.workspaceId !== snapshot.workspace.id,
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["sources"],
+        message: "Project Context references cannot cross workspaces",
+      });
+    }
+  });
+export type ProjectContextSnapshot = z.infer<
+  typeof projectContextSnapshotSchema
+>;
+
 export const orchestrationIntegrityPayloadSchema = z.object({
   request: orchestrationRequestSchema,
+  projectContext: projectContextSnapshotSchema,
   registrySnapshot: capabilitySnapshotIdentitySchema,
   strategy: strategyDecisionSchema,
   plan: executionPlanSchema,
@@ -499,6 +630,7 @@ export type OrchestrationIntegrityPayload = z.infer<
 export const orchestrationPreviewSchema = z
   .object({
     request: orchestrationRequestSchema,
+    projectContext: projectContextSnapshotSchema,
     registryVersion: z.string().min(1).max(80),
     registrySnapshot: capabilitySnapshotIdentitySchema,
     strategy: strategyDecisionSchema,
@@ -511,6 +643,19 @@ export const orchestrationPreviewSchema = z
     {
       message: "Registry version must match the signed snapshot",
       path: ["registryVersion"],
+    },
+  )
+  .refine(
+    (preview) =>
+      preview.projectContext.objective.requestId === preview.request.id &&
+      preview.projectContext.workspace.id ===
+        (preview.request.workspaceId ??
+          "00000000-0000-4000-8000-000000000000") &&
+      preview.projectContext.capabilities.registrySnapshot.id ===
+        preview.registrySnapshot.id,
+    {
+      message: "Project Context must be bound to the request and registry",
+      path: ["projectContext"],
     },
   );
 export type OrchestrationPreview = z.infer<typeof orchestrationPreviewSchema>;
@@ -969,6 +1114,7 @@ export const planExecutionBindingSchema = z.object({
 export type PlanExecutionBinding = z.infer<typeof planExecutionBindingSchema>;
 
 export const auditEventTypeSchema = z.enum([
+  "project_context.snapshot_persisted",
   "orchestration.preview_persisted",
   "approval.requested",
   "approval.granted",

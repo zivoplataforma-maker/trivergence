@@ -1,6 +1,6 @@
 # Ownership arquitectónico de Trivergence
 
-Estado: **normativo para planificación P3; sin cambios de código**  
+Estado: **normativo; Project Context implementado en P3-A1**  
 Fecha: 2026-09-22
 
 ## Propósito
@@ -52,7 +52,7 @@ fuente.
 
 ## Estado de implementación
 
-Esta definición normaliza ownership; no afirma que Project Context, Project
-Intelligence, Execution Gateway, Tool Gateway o Trace estén implementados. El
-estado verificable permanece en `IMPLEMENTATION_STATUS.md` y el orden en
-`ROADMAP.md`.
+Project Context está implementado desde P3-A1 como manifest v1 de referencias,
+digests y límites. Esta definición no afirma que Project Intelligence, Execution
+Gateway, Tool Gateway, Workflow Snapshot o Trace estén implementados. El estado
+verificable permanece en `IMPLEMENTATION_STATUS.md` y el orden en `ROADMAP.md`.

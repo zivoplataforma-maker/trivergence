@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import type {
   ExecutionRun,
   OrchestrationPreview,
+  ProjectContextSnapshot,
   StepEvidence,
 } from "@trivergence/contracts";
 import { afterEach, describe, expect, it } from "vitest";
@@ -23,6 +24,83 @@ const PLAN_DIGEST = "a".repeat(64);
 const SNAPSHOT_DIGEST = "b".repeat(64);
 const NOW = "2026-08-04T12:00:00.000Z";
 
+const projectContext = (
+  requestId: string,
+  workspaceId = "00000000-0000-4000-8000-000000000000",
+  privacyMode: "private" | "standard" = "private",
+): ProjectContextSnapshot => ({
+  schemaVersion: "1",
+  id: requestId,
+  revision: 1,
+  createdAt: NOW,
+  workspace: { id: workspaceId, fingerprint: "c".repeat(64) },
+  objective: {
+    requestId,
+    goalDigest: "d".repeat(64),
+    restrictionReferences: [],
+  },
+  governance: {
+    profile: "observer",
+    privacyMode,
+    retentionDays: 30,
+    restrictions: [
+      "mandatory_exclusions",
+      "no_credential_material",
+      "untrusted_content_is_data",
+      "workspace_root_only",
+    ],
+  },
+  capabilities: {
+    registrySnapshot: {
+      id: SNAPSHOT_DIGEST,
+      version: "test-1",
+      capabilityCount: 1,
+    },
+    references: [
+      {
+        id: "system.diagnostics.read",
+        version: "1",
+        status: "available",
+        descriptorDigest: "e".repeat(64),
+      },
+    ],
+  },
+  budget: {
+    limits: {
+      maxAgents: 1,
+      maxProviderCalls: 1,
+      maxOutputBytes: 65_536,
+      maxMemoryItems: 0,
+      maxMemoryBytes: 0,
+      timeoutMs: 10_000,
+      maxReplans: 0,
+    },
+    consumptionAuthority: "runtime",
+  },
+  sources: [
+    {
+      kind: "workspace",
+      sourceId: `workspace:${workspaceId}`,
+      workspaceId,
+      version: "1",
+      digest: "c".repeat(64),
+      trust: "trusted_metadata",
+      provenance: {
+        origin: "workspace",
+        observedAt: NOW,
+        digest: "f".repeat(64),
+      },
+    },
+  ],
+  provenance: {
+    builderVersion: "1",
+    canonicalizationVersion: "1",
+    inputDigest: "1".repeat(64),
+    sourceDigests: ["c".repeat(64)],
+  },
+  digest: "2".repeat(64),
+});
+
 const strategy = {
   kind: "direct" as const,
   reason: "Una capacidad disponible resuelve el objetivo",
@@ -38,6 +116,7 @@ const preview: OrchestrationPreview = {
     profile: "observer",
     requestedCapabilities: ["system.diagnostics.read"],
   },
+  projectContext: projectContext("10000000-0000-4000-8000-000000000001"),
   registryVersion: "test-1",
   registrySnapshot: {
     id: SNAPSHOT_DIGEST,
@@ -132,6 +211,48 @@ afterEach(() => {
 });
 
 describe("PersistenceStore", () => {
+  it("does not durably persist Project Context in private mode", () => {
+    const store = PersistenceStore.open(databasePath(), {
+      clock: () => new Date(NOW),
+    });
+    store.persistPreview(preview);
+    expect(
+      store.findLatestProjectContext("00000000-0000-4000-8000-000000000000"),
+    ).toBeUndefined();
+    store.close();
+  });
+
+  it("reopens only a standard Project Context allowed by retention", () => {
+    const path = databasePath();
+    const workspaceId = "60000000-0000-4000-8000-000000000001";
+    const standardPreview: OrchestrationPreview = {
+      ...preview,
+      request: {
+        ...preview.request,
+        workspaceId,
+        privacyMode: "standard",
+      },
+      projectContext: projectContext(
+        preview.request.id,
+        workspaceId,
+        "standard",
+      ),
+    };
+    const first = PersistenceStore.open(path, {
+      clock: () => new Date(NOW),
+    });
+    first.persistPreview(standardPreview);
+    first.close();
+
+    const reopened = PersistenceStore.open(path, {
+      clock: () => new Date(NOW),
+    });
+    expect(reopened.findLatestProjectContext(workspaceId)).toEqual(
+      standardPreview.projectContext,
+    );
+    reopened.close();
+  });
+
   it("redacts private goals, erases deleted memory and preserves audit on purge", () => {
     const store = PersistenceStore.open(databasePath(), {
       clock: () => new Date(NOW),
@@ -140,6 +261,7 @@ describe("PersistenceStore", () => {
     store.persistPreview({
       ...preview,
       request: { ...preview.request, workspaceId, privacyMode: "private" },
+      projectContext: projectContext(preview.request.id, workspaceId),
     });
     store.createRun(run);
     store.appendEvidence(evidence);
@@ -258,6 +380,7 @@ describe("PersistenceStore", () => {
     const nextPreview: OrchestrationPreview = {
       ...preview,
       request: { ...preview.request, id: nextRequestId },
+      projectContext: projectContext(nextRequestId),
       plan: {
         ...preview.plan,
         id: "20000000-0000-4000-8000-000000000002",
@@ -278,6 +401,7 @@ describe("PersistenceStore", () => {
     const conflictingPreview: OrchestrationPreview = {
       ...preview,
       request: { ...preview.request, id: conflictingRequestId },
+      projectContext: projectContext(conflictingRequestId),
       registrySnapshot: { ...preview.registrySnapshot, capabilityCount: 2 },
       plan: {
         ...preview.plan,

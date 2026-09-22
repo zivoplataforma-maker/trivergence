@@ -4,6 +4,10 @@ export { EvaluationEngine } from "./evaluation-engine.js";
 export { ExecutionPlanner, type IdFactory } from "./execution-planner.js";
 export { OrchestrationEngine } from "./orchestration-engine.js";
 export {
+  ProjectContextBuilder,
+  type ProjectContextBuildOptions,
+} from "./project-context-builder.js";
+export {
   IntegrityEngine,
   payloadFromPreview,
   type DigestFunction,

@@ -14,6 +14,9 @@ IDE y no produce efectos por sí mismo.
 OrchestrationRequest
        │
        ▼
+ Project Context ──► snapshot v1 de referencias, límites y provenance
+       │
+       ▼
  Strategy Engine ──► StrategyDecision
        │
        ▼
@@ -32,21 +35,35 @@ Evaluation Engine ──► ready | approval_required | blocked
 
 ### Strategy Engine
 
-Entrada: objetivo, perfil, privacidad y snapshot del Registry. Cada capability
-puede publicar `routing.objectiveTerms` y prioridad. Strategy v2 genera una ruta
-candidata por capability enrutables, calcula coincidencias deterministas,
-expande sus dependencias, descarta rutas no disponibles o incompatibles con
-privacidad y ordena por puntuación e ID como desempate. Devuelve todas las
-candidatas con motivo y la ruta seleccionada. Una solicitud explícita de
-capacidades conserva compatibilidad con planes anteriores, pero la UI nueva
-parte del objetivo. `direct`, `sequential` y `unavailable` están implementados;
-`parallel` sigue reservado.
+Entrada: objetivo, perfil, privacidad, Project Context y snapshot del Registry.
+Cada capability puede publicar `routing.objectiveTerms` y prioridad. Strategy v2
+genera una ruta candidata por capability enrutables, calcula coincidencias
+deterministas, expande sus dependencias, descarta rutas no disponibles o
+incompatibles con privacidad y ordena por puntuación e ID como desempate.
+Devuelve todas las candidatas con motivo y la ruta seleccionada. Una solicitud
+explícita de capacidades conserva compatibilidad con planes anteriores, pero la
+UI nueva parte del objetivo. `direct`, `sequential` y `unavailable` están
+implementados; `parallel` sigue reservado.
 
 La coincidencia de términos es una heurística transparente, no interpretación
 semántica por IA. Una intención ambigua o sin coincidencias queda `unavailable`;
 el usuario revisa las rutas antes de ejecutar. Strategy no inspecciona archivos
 ni consulta proveedores. Una capacidad ausente, deshabilitada o no disponible no
 se sustituye silenciosamente.
+
+### Project Context
+
+`ProjectContextBuilder` produce el único `ProjectContextSnapshot` autorizado
+para un preview. El snapshot es inmutable, canónico y limitado a 16 KiB. Liga
+request, workspace opaco, governance, identidad del Registry, referencias de
+capabilities, límites de budget y fuentes mediante SHA-256 y provenance. No
+incluye el path raíz, objetivo en claro, contenido de archivos, credenciales ni
+contadores del Runtime.
+
+Strategy usa sus referencias para acotar las rutas candidatas. Project Context
+no ejecuta, no consulta providers, no concede capabilities, no modifica Policy y
+no persiste Memory. Fuentes externas conservan `untrusted_data` y una referencia
+de otro workspace falla cerrado.
 
 ### Execution Planner
 
@@ -89,9 +106,11 @@ una aprobación no equivale a éxito posterior.
 
 ## API del núcleo
 
-`preview(request)` produce request validado, identidad del snapshot, estrategia,
-plan, evaluación preflight e integridad. `evaluateOutcome` evalúa el run y su
-evidencia después del Runtime. No existe `execute()` en este paquete.
+`preview(request, contextOptions)` construye Project Context y produce request
+validado, identidad del snapshot del Registry, estrategia, plan, evaluación
+preflight e integridad. `buildProjectContext` expone el mismo builder para
+inspección tipada. `evaluateOutcome` evalúa el run y su evidencia después del
+Runtime. No existe `execute()` en este paquete.
 
 El Runtime recibe el artefacto canónico, revalida snapshot y digest y despacha
 los pasos autorizados. Strategy, Planner y Evaluation no importan adaptadores
@@ -99,9 +118,9 @@ concretos.
 
 ## Integridad del artefacto
 
-El artefacto autorizado contiene request, snapshot del Registry, strategy, plan
-—incluidas las policies por paso— y evaluation. Se serializa mediante canonical
-JSON versión `1` y se resume con SHA-256.
+El artefacto autorizado contiene request, Project Context, snapshot del
+Registry, strategy, plan —incluidas las policies por paso— y evaluation. Se
+serializa mediante canonical JSON versión `1` y se resume con SHA-256.
 
 - las claves de objetos se ordenan;
 - el orden de pasos y otras listas semánticas se conserva;

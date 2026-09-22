@@ -6,6 +6,7 @@ import type {
   OrchestrationPreview,
   PlannedStep,
   PolicyProfile,
+  ProjectContextSnapshot,
   ProviderStreamEvent,
 } from "@trivergence/contracts";
 import { canonicalizeJson } from "@trivergence/orchestration-engine";
@@ -29,6 +30,85 @@ const EMPTY_ENVIRONMENT_DIGEST = createHash("sha256")
 
 const sha256 = (value: string) =>
   createHash("sha256").update(value, "utf8").digest("hex");
+
+const projectContext = (
+  requestId: string,
+  profile: PolicyProfile,
+  capabilityId = "runtime.test.execute",
+  privacyMode: "private" | "standard" = "private",
+  workspaceId = "00000000-0000-4000-8000-000000000000",
+): ProjectContextSnapshot => ({
+  schemaVersion: "1",
+  id: requestId,
+  revision: 1,
+  createdAt: new Date(NOW).toISOString(),
+  workspace: { id: workspaceId, fingerprint: "c".repeat(64) },
+  objective: {
+    requestId,
+    goalDigest: "d".repeat(64),
+    restrictionReferences: [],
+  },
+  governance: {
+    profile,
+    privacyMode,
+    retentionDays: 30,
+    restrictions: [
+      "mandatory_exclusions",
+      "no_credential_material",
+      "untrusted_content_is_data",
+      "workspace_root_only",
+    ],
+  },
+  capabilities: {
+    registrySnapshot: {
+      id: SNAPSHOT_DIGEST,
+      version: "test-1",
+      capabilityCount: 1,
+    },
+    references: [
+      {
+        id: capabilityId,
+        version: "1",
+        status: "available",
+        descriptorDigest: "e".repeat(64),
+      },
+    ],
+  },
+  budget: {
+    limits: {
+      maxAgents: 1,
+      maxProviderCalls: 1,
+      maxOutputBytes: 65_536,
+      maxMemoryItems: 0,
+      maxMemoryBytes: 0,
+      timeoutMs: 10_000,
+      maxReplans: 0,
+    },
+    consumptionAuthority: "runtime",
+  },
+  sources: [
+    {
+      kind: "workspace",
+      sourceId: `workspace:${workspaceId}`,
+      workspaceId,
+      version: "1",
+      digest: "c".repeat(64),
+      trust: "trusted_metadata",
+      provenance: {
+        origin: "workspace",
+        observedAt: new Date(NOW).toISOString(),
+        digest: "f".repeat(64),
+      },
+    },
+  ],
+  provenance: {
+    builderVersion: "1",
+    canonicalizationVersion: "1",
+    inputDigest: "1".repeat(64),
+    sourceDigests: ["c".repeat(64)],
+  },
+  digest: "2".repeat(64),
+});
 
 const makePreview = (
   profile: PolicyProfile,
@@ -55,6 +135,10 @@ const makePreview = (
       profile,
       requestedCapabilities: ["runtime.test.execute"],
     },
+    projectContext: projectContext(
+      "10000000-0000-4000-8000-000000000001",
+      profile,
+    ),
     registryVersion: "test-1",
     registrySnapshot: {
       id: SNAPSHOT_DIGEST,
@@ -335,6 +419,12 @@ const makeProviderPreview = (
       requestedCapabilities: ["provider.test.prompt.structured"],
       privacyMode: "standard",
     },
+    projectContext: projectContext(
+      base.request.id,
+      "assistant",
+      "provider.test.prompt.structured",
+      "standard",
+    ),
     strategy,
     plan: {
       ...base.plan,
@@ -784,6 +874,13 @@ describe("RuntimeEngine", () => {
         privacyMode: "private",
         workspaceId: "90000000-0000-4000-8000-000000000001",
       },
+      projectContext: projectContext(
+        base.request.id,
+        "observer",
+        "runtime.test.execute",
+        "private",
+        "90000000-0000-4000-8000-000000000001",
+      ),
     };
     const { runtime, store } = runtimeFixture(
       preview,

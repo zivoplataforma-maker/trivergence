@@ -150,6 +150,10 @@ export class DesktopWorkspaceCoordinator {
         ).toISOString();
         this.persistence.purgeWorkspaceData(workspaceId, cutoff);
       }
+      this.persistence.pruneExpiredProjectContexts(
+        workspaceId,
+        new Date().toISOString(),
+      );
       this.persistence.pruneExpiredMemory(new Date().toISOString());
     }
     const root = new WorkspaceRoot({ id: workspaceId, path: canonicalPath });
@@ -257,17 +261,41 @@ export class DesktopWorkspaceCoordinator {
           retentionDays: request.retentionDays,
         }),
     };
+    const previousContext =
+      request.privacyMode === "standard"
+        ? this.persistence.findLatestProjectContext(request.workspaceId)
+        : undefined;
 
     const preview = orchestrationPreviewSchema.parse(
-      session.engine.preview({
-        id: request.requestId,
-        goal: request.goal,
-        profile: request.profile,
-        privacyMode: request.privacyMode,
-        workspaceId: request.workspaceId,
-        requestedCapabilities: request.routeHint ? [request.routeHint] : [],
-        capabilityInputs,
-      }),
+      session.engine.preview(
+        {
+          id: request.requestId,
+          goal: request.goal,
+          profile: request.profile,
+          privacyMode: request.privacyMode,
+          workspaceId: request.workspaceId,
+          requestedCapabilities: request.routeHint ? [request.routeHint] : [],
+          capabilityInputs,
+        },
+        {
+          workspaceFingerprint: session.descriptor.fingerprint,
+          contextId: previousContext?.id ?? request.requestId,
+          revision: (previousContext?.revision ?? 0) + 1,
+          retentionDays: Math.min(
+            request.retentionDays,
+            this.persistence.getWorkspaceRetention(request.workspaceId),
+          ),
+          budgetLimits: {
+            maxAgents: request.maxAgents,
+            maxProviderCalls: request.maxProviderCalls,
+            maxOutputBytes: request.maxOutputBytes,
+            maxMemoryItems: request.maxMemoryItems,
+            maxMemoryBytes: request.maxMemoryBytes,
+            timeoutMs: request.timeoutMs,
+            maxReplans: request.maxReplans,
+          },
+        },
+      ),
     );
     if (preview.strategy.capabilityIds.includes(workspaceCapabilityIds.read)) {
       if (!request.detail) {

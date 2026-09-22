@@ -36,6 +36,8 @@ StepEvidence ─────────┘          │
   provenance, run/plan/step y expiración; un trigger impide reescrituras salvo
   vaciar contenido/provenance al marcar borrado;
 - `workspace_retention`: días de retención elegidos explícitamente;
+- `project_context_snapshots`: manifest v1 inmutable de referencias/digests por
+  workspace, request y revisión, con expiración; no existe fila en private mode;
 - `audit_events`: metadatos acotados, secuencia y hashes anterior/actual;
 - `schema_migrations`: versión, checksum y fecha de aplicación.
 
@@ -111,6 +113,8 @@ Las pruebas cubren:
   resolución humana atribuida, exportación y borrado por retención.
 - commit inmutable, recall acotado, borrado, poda y eventos content-free de
   memoria M6.
+- persistencia/reapertura de Project Context estándar, ausencia durable en modo
+  privado, expiración y exportación vinculada al workspace.
 
 La decisión tecnológica y su vía de sustitución están en
 [ADR-0003](adr/0003-node-sqlite-persistence-boundary.md).

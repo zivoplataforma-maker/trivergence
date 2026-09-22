@@ -313,6 +313,36 @@ export const migrations: readonly Migration[] = [
         ON provider_execution_attempts(request_digest, remote_state);
     `,
   },
+  {
+    version: "0008_project_context",
+    sql: `
+      CREATE TABLE project_context_snapshots (
+        context_id TEXT NOT NULL,
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        request_id TEXT NOT NULL UNIQUE,
+        workspace_id TEXT NOT NULL,
+        schema_version TEXT NOT NULL,
+        snapshot_json TEXT NOT NULL CHECK (length(snapshot_json) <= 65536),
+        digest TEXT NOT NULL CHECK (length(digest) = 64),
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        PRIMARY KEY (context_id, revision),
+        FOREIGN KEY (request_id) REFERENCES orchestration_requests(id)
+          ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TRIGGER project_context_snapshots_no_update
+      BEFORE UPDATE ON project_context_snapshots
+      BEGIN
+        SELECT RAISE(ABORT, 'project context snapshots are immutable');
+      END;
+
+      CREATE INDEX project_context_workspace_idx
+        ON project_context_snapshots(workspace_id, created_at DESC);
+      CREATE UNIQUE INDEX project_context_digest_uq
+        ON project_context_snapshots(digest);
+    `,
+  },
 ];
 
 const checksum = (sql: string) =>

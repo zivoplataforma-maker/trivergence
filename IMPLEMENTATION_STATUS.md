@@ -17,7 +17,41 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 | M7 — hardening/distribución Windows | PARTIAL | Controles y paquete unsigned verificados localmente; faltan reproducibilidad NSIS, firma y matriz limpia Win10/11. |
 | P3-0 — documentación y ADRs         | DONE    | Normalización documental, ownership y cuatro ADRs propuestos; sin cambios de código ni inicio funcional de P3.     |
 | P3-0.1 — revisión técnica de ADRs   | DONE    | ADR-0012 a ADR-0015 aceptados con correcciones documentales; implementación continúa pendiente.                    |
-| P3 — evolución arquitectónica       | PLANNED | Orden dependiente y capacidades futuras documentados; ninguna subfase funcional iniciada.                          |
+| P3-A1 — Project Context mínimo      | DONE    | Snapshot v1 determinista, builder, persistencia privada/estándar, Strategy, threat model y tests verificados.      |
+| P3 — evolución arquitectónica       | PARTIAL | P3-A1 completo; P3-D0 y fases posteriores no comenzaron.                                                           |
+
+## P3-A1 — Project Context mínimo (2026-09-22)
+
+Estado: `DONE`. P3-D0 no comenzó.
+
+- `ProjectContextSnapshot` v1 representa objetivo por digest, identidad opaca de
+  workspace, governance, referencias acotadas de capabilities, límites de budget
+  y fuentes autorizadas con provenance;
+- `ProjectContextBuilder` es el único constructor: normaliza orden, verifica
+  workspace/capabilities/referencias, excluye material con forma de credencial,
+  aplica 16 KiB y publica SHA-256 sobre JSON canónico;
+- Strategy consume el snapshot y solo considera rutas incluidas en su contexto;
+  Planner, Policy, Runtime, Registry, Memory, Audit y Evidence conservan su
+  ownership;
+- SQLite migration `0008_project_context` persiste snapshots inmutables solo en
+  modo estándar, aplica expiración/retención y permite reapertura; private mode
+  no crea una fila durable de contexto;
+- el artefacto de preview liga Project Context a request, workspace, Registry y
+  plan integrity; no contiene path raíz, objetivo en claro, consumos Runtime,
+  credenciales ni contenido de recursos;
+- 16 tests nuevos prueban determinismo, revisión/digest, orden canónico,
+  aislamiento entre workspaces, privacidad, credenciales, fail-closed, tamaño,
+  provenance, budgets, Policy, datos no confiables, Reference Provider y
+  reapertura.
+
+Evidencia local final: format, lint, build y typecheck frescos de 12 proyectos;
+**165/165 tests** fuera del sandbox; Electron E2E y smoke; auditoría sin
+vulnerabilidades conocidas; SBOM CycloneDX verificado con 451 componentes;
+enlaces relativos, whitespace y secret scan sin hallazgos.
+
+M5 y M7 permanecen `PARTIAL`; ningún provider externo fue habilitado y Reference
+Provider continúa siendo el único ejecutable. Evidencia completa en
+[`docs/product/p3-a1-project-context-report.md`](docs/product/p3-a1-project-context-report.md).
 
 ## P3-0 — normalización documental (2026-09-22)
 
@@ -254,7 +288,7 @@ implementadas** y no modifica M5, M6 ni M7.
 Se consolidaron funciones útiles para una futura P3 sin adoptar como núcleo los
 sistemas usados durante la investigación:
 
-- `PLANNED` P3-A1: Project Context mínimo, versionado por workspace;
+- `DONE` P3-A1: Project Context mínimo, versionado por workspace;
 - `PLANNED` P3-D0: contrato de Execution Gateway sobre ejecución supervisada;
 - `PLANNED` P3-E1: estado durable de workflows y snapshots confirmados;
 - `PLANNED` P3-B1: perfiles declarativos por capabilities, permisos y budgets;

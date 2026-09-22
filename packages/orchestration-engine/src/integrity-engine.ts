@@ -114,6 +114,7 @@ export function payloadFromPreview(
 ): OrchestrationIntegrityPayload {
   return orchestrationIntegrityPayloadSchema.parse({
     request: preview.request,
+    projectContext: preview.projectContext,
     registrySnapshot: preview.registrySnapshot,
     strategy: preview.strategy,
     plan: preview.plan,

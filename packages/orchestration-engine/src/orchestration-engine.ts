@@ -3,6 +3,7 @@ import {
   orchestrationRequestSchema,
   type OrchestrationPreview,
   type OrchestrationRequest,
+  type ProjectContextSnapshot,
   type ExecutionOutcomeEvaluation,
   type ExecutionRun,
   type RevalidationResult,
@@ -13,6 +14,10 @@ import type { CapabilityRegistry } from "./capability-registry.js";
 import { EvaluationEngine } from "./evaluation-engine.js";
 import { ExecutionPlanner, type IdFactory } from "./execution-planner.js";
 import { IntegrityEngine, type DigestFunction } from "./integrity-engine.js";
+import {
+  ProjectContextBuilder,
+  type ProjectContextBuildOptions,
+} from "./project-context-builder.js";
 import { StrategyEngine } from "./strategy-engine.js";
 
 export class OrchestrationEngine {
@@ -20,6 +25,7 @@ export class OrchestrationEngine {
   readonly #planner: ExecutionPlanner;
   readonly #evaluation = new EvaluationEngine();
   readonly #integrity: IntegrityEngine;
+  readonly #projectContext: ProjectContextBuilder;
 
   constructor(
     private readonly registry: CapabilityRegistry,
@@ -28,11 +34,31 @@ export class OrchestrationEngine {
   ) {
     this.#planner = new ExecutionPlanner(createId);
     this.#integrity = new IntegrityEngine(digest);
+    this.#projectContext = new ProjectContextBuilder(
+      registry,
+      () => this.#integrity.createRegistrySnapshot(registry),
+      digest,
+    );
   }
 
-  preview(input: OrchestrationRequest): OrchestrationPreview {
+  buildProjectContext(
+    input: OrchestrationRequest,
+    options: ProjectContextBuildOptions = {},
+  ): ProjectContextSnapshot {
+    return this.#projectContext.build(input, options);
+  }
+
+  preview(
+    input: OrchestrationRequest,
+    contextOptions: ProjectContextBuildOptions = {},
+  ): OrchestrationPreview {
     const request = orchestrationRequestSchema.parse(input);
-    const strategy = this.#strategy.select(request, this.registry);
+    const projectContext = this.#projectContext.build(request, contextOptions);
+    const strategy = this.#strategy.select(
+      request,
+      this.registry,
+      projectContext,
+    );
     const plan = this.#planner.plan(request, strategy, this.registry);
     const evaluation = this.#evaluation.evaluatePreflight(plan);
     const registrySnapshot = this.#integrity.createRegistrySnapshot(
@@ -40,6 +66,7 @@ export class OrchestrationEngine {
     );
     const planIntegrity = this.#integrity.createPlanIntegrity({
       request,
+      projectContext,
       registrySnapshot,
       strategy,
       plan,
@@ -48,6 +75,7 @@ export class OrchestrationEngine {
 
     return orchestrationPreviewSchema.parse({
       request,
+      projectContext,
       registryVersion: this.registry.version,
       registrySnapshot,
       strategy,
