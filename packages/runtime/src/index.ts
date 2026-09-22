@@ -6,6 +6,16 @@ export {
   type StepDispatcher,
 } from "./dispatcher-registry.js";
 export {
+  createExecutionRequestDigest,
+  createLocalSupervisedBackendManifest,
+  ExecutionGateway,
+  LocalSupervisedBackend,
+  type ExecutionBackend,
+  type ExecutionGatewayInput,
+  type ProcessExecutionOperation,
+  type ProcessRunner,
+} from "./execution-gateway.js";
+export {
   ProcessStepDispatcher,
   type ProcessStepDispatcherOptions,
 } from "./process-dispatcher.js";

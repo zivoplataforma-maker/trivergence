@@ -370,6 +370,7 @@ export class RuntimeEngine {
             `Execution descriptor changed for ${initial.step.id}`,
           );
         }
+        let consumedApproval: ApprovalRecord | undefined;
         if (current.policy.decision === "require_approval") {
           const approvalId = options.approvalIds?.[initial.step.id];
           if (!approvalId || !current.approvalDigest) {
@@ -383,6 +384,7 @@ export class RuntimeEngine {
           if (consumed.status !== "consumed") {
             throw new Error(`Approval cannot be consumed: ${consumed.status}`);
           }
+          consumedApproval = consumed;
         }
 
         const recoveryId = options.recoveryCheckpointIds?.[initial.step.id];
@@ -398,9 +400,26 @@ export class RuntimeEngine {
         const dispatchContext: DispatchContext = {
           runId: run.id,
           planId: run.planId,
+          planDigest: run.planDigest,
+          registrySnapshotId: run.registrySnapshotId,
           request: immutableSnapshot(currentPreview.request),
+          projectContext: immutableSnapshot({
+            id: currentPreview.projectContext.id,
+            revision: currentPreview.projectContext.revision,
+            digest: currentPreview.projectContext.digest,
+            objectiveRequestId:
+              currentPreview.projectContext.objective.requestId,
+            workspaceId: currentPreview.projectContext.workspace.id,
+          }),
           step: immutableSnapshot(current.step),
           descriptor: immutableSnapshot(current.descriptor),
+          policy: immutableSnapshot(current.policy),
+          ...(consumedApproval
+            ? { approval: immutableSnapshot(consumedApproval) }
+            : {}),
+          ...(current.approvalDigest
+            ? { expectedApprovalDigest: current.approvalDigest }
+            : {}),
           outputs: immutableSnapshot(dependencyOutputs),
           signal: controller.signal,
           emit: (event) => {

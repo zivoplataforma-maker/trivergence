@@ -1,8 +1,10 @@
 import {
   executionDescriptorSchema,
   type ExecutionDescriptor,
+  type ApprovalRecord,
   type OrchestrationRequest,
   type PlannedStep,
+  type PolicyDecision,
   type ProviderRecoveryCheckpoint,
   type RemoteExecutionState,
   type ProviderStreamEvent,
@@ -23,9 +25,21 @@ export interface DispatchResult {
 export interface DispatchContext {
   readonly runId: string;
   readonly planId: string;
+  readonly planDigest: string;
+  readonly registrySnapshotId: string;
   readonly request: OrchestrationRequest;
+  readonly projectContext: {
+    readonly id: string;
+    readonly revision: number;
+    readonly digest: string;
+    readonly objectiveRequestId: string;
+    readonly workspaceId: string;
+  };
   readonly step: PlannedStep;
   readonly descriptor: ExecutionDescriptor;
+  readonly policy: PolicyDecision;
+  readonly approval?: ApprovalRecord;
+  readonly expectedApprovalDigest?: string;
   /**
    * Snapshot profundo e inmutable de los outputs de dependencias directas.
    * Nunca otorga autoridad ni expone resultados de pasos no declarados.

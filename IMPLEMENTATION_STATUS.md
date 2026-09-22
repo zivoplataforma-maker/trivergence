@@ -18,7 +18,35 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 | P3-0 — documentación y ADRs         | DONE    | Normalización documental, ownership y cuatro ADRs propuestos; sin cambios de código ni inicio funcional de P3.     |
 | P3-0.1 — revisión técnica de ADRs   | DONE    | ADR-0012 a ADR-0015 aceptados con correcciones documentales; implementación continúa pendiente.                    |
 | P3-A1 — Project Context mínimo      | DONE    | Snapshot v1 determinista, builder, persistencia privada/estándar, Strategy, threat model y tests verificados.      |
-| P3 — evolución arquitectónica       | PARTIAL | P3-A1 completo; P3-D0 y fases posteriores no comenzaron.                                                           |
+| P3-D0 — Execution Gateway contract  | DONE    | Contrato v1, backend local supervisado, Policy/Approval/Context bindings, límites y tests verificados.             |
+| P3 — evolución arquitectónica       | PARTIAL | P3-A1 y P3-D0 completos; P3-E1 y fases posteriores no comenzaron.                                                  |
+
+## P3-D0 — Execution Gateway Contract (2026-09-22)
+
+Estado: `DONE`. P3-E1 no comenzó.
+
+- `ExecutionBackendManifest`, `ExecutionRequest`, `ExecutionPreparation` y
+  `ExecutionResult` forman el contrato v1 y exponen capabilities, acceso host,
+  aislamiento real (`none`), límites, lifecycle y provenance;
+- `ExecutionGateway` valida backend/capabilities, Project Context, descriptor,
+  evaluación de efecto planificada, Policy, approval consumida, privacidad y
+  budgets antes del dispatch;
+- `LocalSupervisedBackend` reutiliza la instancia existente de
+  `ProcessSupervisor`; no existe un segundo supervisor, sandbox o camino de
+  ejecución;
+- `ProcessStepDispatcher` conserva su descriptor aprobado y delega la operación
+  al gateway; Runtime sigue siendo owner del run y trata terminación de árbol no
+  confirmada como `orphaned`;
+- el gateway es efímero: no persiste argumentos ni extiende retención. Private
+  mode continúa bloqueando red y el manifest no afirma confinamiento de
+  filesystem o destino de red inexistentes;
+- la severidad se consume desde `step.action.effectClass` como puente
+  `planned-action-v1`; la implementación completa de ADR-0014 sigue pendiente.
+
+Evidencia y gates completos en
+[`docs/product/p3-d0-execution-gateway-report.md`](docs/product/p3-d0-execution-gateway-report.md).
+M5 y M7 permanecen `PARTIAL`; Reference Provider continúa siendo el único
+provider ejecutable.
 
 ## P3-A1 — Project Context mínimo (2026-09-22)
 
@@ -289,7 +317,7 @@ Se consolidaron funciones útiles para una futura P3 sin adoptar como núcleo lo
 sistemas usados durante la investigación:
 
 - `DONE` P3-A1: Project Context mínimo, versionado por workspace;
-- `PLANNED` P3-D0: contrato de Execution Gateway sobre ejecución supervisada;
+- `DONE` P3-D0: contrato de Execution Gateway sobre ejecución supervisada;
 - `PLANNED` P3-E1: estado durable de workflows y snapshots confirmados;
 - `PLANNED` P3-B1: perfiles declarativos por capabilities, permisos y budgets;
 - `PLANNED` P3-B2: fan-out/fan-in con concurrencia, cancelación, budget

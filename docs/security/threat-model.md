@@ -70,6 +70,11 @@ mismo usuario.
 | T-25 | Referencia cruza workspace o filtra path/secreto | Exposición o escalación lógica   | IDs opacos, workspace binding, sin root path/contenido, patrones de credencial, exclusiones obligatorias.        |
 | T-26 | Contexto amplía Policy/capabilities/budgets      | Bypass de autoridad              | Contexto descriptivo; Registry/Policy/Runtime siguen siendo autoridad, fail-closed y consumo fuera del snapshot. |
 | T-27 | Contexto sobredimensionado o retenido en privado | DoS o fuga local                 | Límite 16 KiB, cardinalidades, modo privado sin fila durable, TTL y poda explícita.                              |
+| T-28 | Backend/capability falsificados                  | Bypass de frontera de ejecución  | Manifest v1 validado, identidad/version, Registry separado, matching fail-closed; capability nunca autoriza.     |
+| T-29 | Request cambia tras Policy/Approval              | Ejecución no consentida          | Digests de plan/descriptor/request/policy/acción, approval consumida y validación inmediatamente antes de spawn. |
+| T-30 | Escalada filesystem/red del child                | Escape o exfiltración            | Cwd/executable/environment allowlisted, red requiere autorización; manifest declara sin sandbox ni confinement.  |
+| T-31 | Backend devuelve lifecycle/provenance inválido   | Evidencia falsa                  | Resultado schema-validado, digests correlacionados y Runtime conserva ownership de evidence/run.                 |
+| T-32 | Ejecución cruza Project Context/workspace        | Acceso a otro proyecto           | Binding de request/workspace/context/revision/digest y rechazo fail-closed antes de dispatch.                    |
 
 ## Prompt injection
 
@@ -116,3 +121,9 @@ Una acción aprobada puede ser dañina, un detector puede no reconocer un secret
 y una CLI oficial puede cambiar o ser comprometida. Trivergence reduce y hace
 visible el riesgo; no convierte la ejecución de agentes sobre un host en una
 actividad segura por definición.
+
+P3-D0 tampoco convierte el proceso local en sandbox: un ejecutable permitido
+puede acceder a recursos del usuario que admita el sistema operativo y puede
+abrir red sin que el supervisor pruebe el destino real. Los destinos declarados,
+Policy, approvals y private mode reducen el riesgo lógico, pero aislamiento y
+network enforcement reales requieren un backend futuro distinto.

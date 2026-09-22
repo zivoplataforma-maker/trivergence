@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   executionDescriptorSchema,
+  executionRequestSchema,
   sha256DigestSchema,
   type ExecutionDescriptor,
   type PlannedStep,
@@ -14,6 +15,12 @@ import type {
   DispatchResult,
   StepDispatcher,
 } from "./dispatcher-registry.js";
+import {
+  createExecutionRequestDigest,
+  createLocalSupervisedBackendManifest,
+  ExecutionGateway,
+  LocalSupervisedBackend,
+} from "./execution-gateway.js";
 import type { ProcessSpec, ProcessSupervisor } from "./process-supervisor.js";
 
 export interface ProcessStepDispatcherOptions {
@@ -33,6 +40,9 @@ export class ProcessStepDispatcher implements StepDispatcher {
   readonly #capabilityVersion: string;
   readonly #supervisor: ProcessSupervisor;
   readonly #resolveSpec: ProcessStepDispatcherOptions["resolveSpec"];
+  readonly #gateway: ExecutionGateway;
+  readonly #backendId = "trivergence.local-supervised";
+  readonly #backendVersion = "1";
 
   constructor(options: ProcessStepDispatcherOptions) {
     this.capabilityId = options.capabilityId;
@@ -40,6 +50,15 @@ export class ProcessStepDispatcher implements StepDispatcher {
     this.#capabilityVersion = options.capabilityVersion;
     this.#supervisor = options.supervisor;
     this.#resolveSpec = options.resolveSpec;
+    const manifest = createLocalSupervisedBackendManifest({
+      id: this.#backendId,
+      version: this.#backendVersion,
+      buildDigest: sha256("@trivergence/runtime/local-supervised-backend-v1"),
+    });
+    this.#gateway = new ExecutionGateway(
+      [new LocalSupervisedBackend(options.supervisor, manifest)],
+      sha256,
+    );
   }
 
   describe(step: PlannedStep): ExecutionDescriptor {
@@ -73,19 +92,105 @@ export class ProcessStepDispatcher implements StepDispatcher {
     ) {
       throw new Error("Process descriptor changed before spawn");
     }
-    const result = await this.#supervisor.run(
-      this.#resolveSpec(context.step),
-      context.signal,
-    );
-    const combinedOutput = Buffer.from(
-      `${result.stdout}\u0000${result.stderr}`,
-    );
+    const spec = this.#resolveSpec(context.step);
+    const effectClass = context.step.action.effectClass;
+    if (!effectClass) {
+      throw new Error("Process execution requires a Planner effect assessment");
+    }
+    const descriptorDigest = sha256(canonicalizeJson(context.descriptor));
+    const actionDigest = sha256(canonicalizeJson(context.step.action));
+    const policyDigest = sha256(canonicalizeJson(context.policy));
+    const requestWithoutDigest = {
+      schemaVersion: "1" as const,
+      id: randomUUID(),
+      backend: { id: this.#backendId, version: this.#backendVersion },
+      requiredCapabilities: [
+        "process_execution" as const,
+        "filesystem_access" as const,
+        "cancellation" as const,
+        "timeout" as const,
+        ...(context.descriptor.networkDestinations.length > 0
+          ? (["network_access"] as const)
+          : []),
+      ],
+      binding: {
+        objectiveRequestId: context.request.id,
+        workspaceId: context.projectContext.workspaceId,
+        runId: context.runId,
+        planId: context.planId,
+        stepId: context.step.id,
+        capabilityId: context.step.capabilityId,
+        planDigest: context.planDigest,
+        registrySnapshotId: context.registrySnapshotId,
+      },
+      projectContext: context.projectContext,
+      descriptorDigest,
+      effectAssessment: {
+        version: "planned-action-v1" as const,
+        severity: effectClass,
+        actionDigest,
+      },
+      authorization: {
+        policy: context.policy,
+        policyDigest,
+        ...(context.expectedApprovalDigest
+          ? { expectedApprovalDigest: context.expectedApprovalDigest }
+          : {}),
+        ...(context.approval
+          ? {
+              approval: {
+                id: context.approval.id,
+                status: "consumed" as const,
+                actionDigest: context.approval.actionDigest,
+                planDigest: context.approval.planDigest,
+                rulesetVersion: context.approval.rulesetVersion,
+                descriptorDigest: sha256(
+                  canonicalizeJson(context.approval.descriptor),
+                ),
+              },
+            }
+          : {}),
+      },
+      requirements: {
+        processExecution: true as const,
+        filesystemAccess: "host_process" as const,
+        networkRequired: context.descriptor.networkDestinations.length > 0,
+        networkAuthorized:
+          context.descriptor.networkDestinations.length === 0 ||
+          context.policy.decision !== "deny",
+        cancellationRequired: true,
+        timeoutMs: spec.timeoutMs,
+        maxOutputBytes: spec.maxOutputBytes,
+      },
+      privacyMode: context.request.privacyMode ?? "standard",
+      budget: {
+        timeoutMs: spec.timeoutMs,
+        maxOutputBytes: spec.maxOutputBytes,
+        consumptionAuthority: "runtime" as const,
+      },
+      provenance: { source: "runtime" as const },
+    };
+    const executionRequest = executionRequestSchema.parse({
+      ...requestWithoutDigest,
+      provenance: {
+        source: "runtime",
+        requestDigest: createExecutionRequestDigest(
+          requestWithoutDigest,
+          sha256,
+        ),
+      },
+    });
+    const result = await this.#gateway.execute({
+      request: executionRequest,
+      descriptor: context.descriptor,
+      action: context.step.action,
+      operation: { kind: "process", spec },
+      signal: context.signal,
+    });
     return {
-      outcome: result.outcome,
-      summary: result.outputTruncated
-        ? `Process ${result.outcome}; output truncated`
-        : `Process ${result.outcome}`,
-      outputDigest: sha256(combinedOutput),
+      outcome: result.lifecycle,
+      summary: result.summary,
+      outputDigest: result.outputDigest,
       treeTerminationConfirmed: result.treeTerminationConfirmed,
     };
   }

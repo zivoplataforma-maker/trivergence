@@ -223,16 +223,20 @@ continúa siendo el único provider ejecutable.
 
 ## P3-D0 — contrato de Execution Gateway
 
-Estado: `PLANNED`. Dependencias: P3-A1 y ADRs de effect/recovery aceptados pero
-todavía no implementados.
+Estado: `DONE` (2026-09-22). Dependencias: P3-A1 y ADRs de effect/recovery
+aceptados pero todavía no implementados.
 
-Objetivo: definir una interfaz uniforme sobre ProcessSupervisor y ejecución
-supervisada existente, con filesystem, red, procesos, recursos, cancelación,
-cleanup y evidence declarados. No elige una tecnología de sandbox ni implementa
-un backend nuevo.
+Resultado: contrato v1 de backend/request/preparation/result, gateway
+fail-closed y backend local supervisado que delega en el `ProcessSupervisor`
+existente. El manifest declara acceso de proceso host, ausencia de
+sandbox/confinamiento del child, red no filtrada por destino, límites,
+cancelación y provenance sin convertir capabilities en permisos.
 
-Puerta de salida futura: ownership y lifecycle únicos que Tool Gateway pueda
-reutilizar sin crear otro supervisor.
+Puerta de salida verificada: Policy y Approval permanecen como autoridades;
+Project Context se referencia por identidad/revisión/digest; la evaluación de
+efecto planificada se consume mediante un puente explícito; Runtime conserva el
+lifecycle global y `treeTerminationConfirmed=false` permanece visible. Tool
+Gateway podrá reutilizar esta frontera sin crear otro supervisor.
 
 ## P3-E1 — Durable Workflow State
 

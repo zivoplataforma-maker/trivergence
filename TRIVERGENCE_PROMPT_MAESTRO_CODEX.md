@@ -466,7 +466,7 @@ crear una segunda fuente de verdad:
 | Effect Assessment    | Evaluación versionada de severidad y compensación producida por Planner           | reclasificaciones independientes por cada consumidor    |
 | Capability Registry  | Estado normalizado de capacidades observadas                                      | ejecutor o trust store implícito                        |
 | Provider Gateway     | `ProviderAdapter` + `AdapterHost` + dispatcher existentes                         | segundo camino de ejecución                             |
-| Execution Gateway    | Abstracción futura sobre ejecución supervisada                                    | policy engine o tool protocol                           |
+| Execution Gateway    | Frontera v1 implementada sobre ejecución local supervisada                        | policy engine, Runtime, sandbox o tool protocol         |
 | Tool Gateway         | Adaptación de herramientas hacia capabilities                                     | supervisor de procesos independiente                    |
 | Workflow Snapshot    | Manifest inmutable de un punto confirmado con referencias y digests               | copia de Memory/Context/Audit/Evidence o estado UNKNOWN |
 

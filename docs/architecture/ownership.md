@@ -1,6 +1,6 @@
 # Ownership arquitectónico de Trivergence
 
-Estado: **normativo; Project Context implementado en P3-A1**  
+Estado: **normativo; Project Context y Execution Gateway implementados**  
 Fecha: 2026-09-22
 
 ## Propósito
@@ -22,7 +22,7 @@ fuente.
 | Effect Assessment    | Evaluación efectiva versionada de severidad y compensación producida por Planner   | kind, risk/destructive, destino, declaración y policy metadata                | severity, compensation, versión y digest                    | no permite que Runtime, Policy o adapters reclasifiquen por separado   |
 | Capability Registry  | Estado normalizado de capabilities observadas                                      | publicaciones versionadas, health y disponibilidad                            | inventario que consumen Strategy y Planner                  | no ejecuta, autentica ni concede confianza implícita                   |
 | Provider Gateway     | Frontera existente formada por `ProviderAdapter`, `AdapterHost` y dispatcher       | request preparado, manifest, aprobación y budget                              | eventos/resultados normalizados y provenance                | no existe un segundo camino directo Runtime→provider                   |
-| Execution Gateway    | Abstracción futura sobre ejecución supervisada                                     | acción autorizada, effect class, policy y backend elegible                    | lifecycle, cancelación, cleanup y evidencia de ejecución    | no reemplaza Runtime, Policy ni Registry                               |
+| Execution Gateway    | Frontera normalizada hacia backends de ejecución                                   | acción autorizada, effect assessment, Policy, Approval y backend              | preparación, resultado, límites y provenance                | no reemplaza Runtime, Policy, Approval, Registry ni supervisor         |
 | Tool Gateway         | Adaptación futura de tools/resources/prompts a capabilities                        | protocolos de tools y configuración allowlisted                               | descriptors y resultados normalizados                       | no implementa supervisor, sandbox o autoridad propios                  |
 | Workflow Snapshot    | Manifest inmutable de un punto confirmado de orquestación                          | referencias versionadas a run/plan/budget/Memory/Context/Audit/Evidence       | punto de resume validable con identidad y digest            | no copia fuentes de verdad ni representa estado remoto incierto        |
 
@@ -53,6 +53,8 @@ fuente.
 ## Estado de implementación
 
 Project Context está implementado desde P3-A1 como manifest v1 de referencias,
-digests y límites. Esta definición no afirma que Project Intelligence, Execution
-Gateway, Tool Gateway, Workflow Snapshot o Trace estén implementados. El estado
-verificable permanece en `IMPLEMENTATION_STATUS.md` y el orden en `ROADMAP.md`.
+digests y límites. Execution Gateway está implementado desde P3-D0 como frontera
+v1 sobre el supervisor local existente; no es un sandbox ni una segunda máquina
+de estados. Esta definición no afirma que Project Intelligence, Tool Gateway,
+Workflow Snapshot o Trace estén implementados. El estado verificable permanece
+en `IMPLEMENTATION_STATUS.md` y el orden en `ROADMAP.md`.

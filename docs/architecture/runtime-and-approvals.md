@@ -22,6 +22,12 @@ Preview persistido + Registry vigente
                  ▼
        Dispatcher Registry
                  │
+       Execution Gateway (procesos)
+                 │
+       Local Supervised Backend
+                 │
+        ProcessSupervisor
+                 │
         efecto + evidencia
                  │
                  ▼
@@ -95,6 +101,28 @@ El adaptador de procesos sólo acepta executable absoluto preautorizado, cwd
 dentro de roots permitidos, argv tipado y environment reducido. No usa shell, no
 recibe stdin y limita bytes de salida. La supervisión multiplataforma y su
 decisión están en [ADR-0004](adr/0004-runtime-process-supervision.md).
+
+## Execution Gateway P3-D0
+
+Los dispatchers de procesos describen primero el mismo descriptor que cubren
+Policy y Approval. Antes de llamar al supervisor, el gateway valida un request
+v1 sellado contra backend/version, capabilities requeridas, Project Context,
+plan, descriptor, efecto planificado, decisión Policy, approval consumida,
+privacy mode y límites. Capability indica que el backend sabe hacer algo; nunca
+concede permiso.
+
+El único backend implementado es `trivergence.local-supervised`. Recibe la misma
+instancia de `ProcessSupervisor`: no crea otro supervisor ni duplica timeout,
+cancelación o terminación de árbol. Su manifest declara honestamente
+`isolation.level=none`, acceso filesystem/red del proceso host, allowlists de
+executable/cwd/environment y ausencia de filtrado de destinos de red o
+confinamiento de accesos realizados por el child. El gateway es efímero y no
+persiste argumentos.
+
+El lifecycle normalizado admite preparación y resultados terminales. Runtime
+sigue siendo owner de las transiciones globales; `unknown` queda reservado a
+fronteras genuinamente inciertas y no se usa para ocultar la terminación local.
+`treeTerminationConfirmed=false` se preserva y Runtime produce `orphaned`.
 
 ## Gate de aceptación
 

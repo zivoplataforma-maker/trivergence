@@ -1078,6 +1078,212 @@ export const executionDescriptorSchema = z
   });
 export type ExecutionDescriptor = z.infer<typeof executionDescriptorSchema>;
 
+export const executionCapabilitySchema = z.enum([
+  "process_execution",
+  "filesystem_access",
+  "network_access",
+  "cancellation",
+  "timeout",
+]);
+export type ExecutionCapability = z.infer<typeof executionCapabilitySchema>;
+
+export const executionBackendManifestSchema = z
+  .object({
+    schemaVersion: z.literal("1"),
+    id: z
+      .string()
+      .min(3)
+      .max(120)
+      .regex(/^[a-z][a-z0-9.-]+$/u),
+    version: z.string().min(1).max(40),
+    mode: z.literal("local_supervised"),
+    capabilities: z
+      .array(executionCapabilitySchema)
+      .min(1)
+      .max(5)
+      .refine((values) => new Set(values).size === values.length, {
+        message: "Execution capabilities must be unique",
+      }),
+    filesystem: z.object({
+      access: z.literal("host_process"),
+      cwdAllowlistEnforced: z.boolean(),
+      childAccessConfined: z.literal(false),
+    }),
+    network: z.object({
+      access: z.literal("host_process"),
+      destinationEnforcement: z.literal(false),
+    }),
+    process: z.object({
+      supervised: z.literal(true),
+      executableAllowlistEnforced: z.literal(true),
+      environmentAllowlistEnforced: z.literal(true),
+    }),
+    cancellation: z.object({
+      requestSupported: z.boolean(),
+      treeTerminationAttempted: z.boolean(),
+      confirmationObservable: z.boolean(),
+    }),
+    timeout: z.object({
+      supported: z.boolean(),
+      maxMs: z.number().int().min(10).max(300_000),
+    }),
+    persistence: z.object({
+      gatewayState: z.literal("ephemeral"),
+    }),
+    isolation: z.object({
+      level: z.literal("none"),
+      sandboxed: z.literal(false),
+    }),
+    limits: z.object({
+      maxArguments: z.number().int().min(1).max(128),
+      maxArgumentBytes: z.number().int().min(1).max(8_192),
+      maxEnvironmentEntries: z.number().int().min(0).max(64),
+      maxOutputBytes: z.number().int().min(1).max(1_048_576),
+    }),
+    provenance: z.object({
+      implementation: z.string().min(1).max(120),
+      buildDigest: sha256DigestSchema,
+    }),
+  })
+  .superRefine((manifest, context) => {
+    const capabilities = new Set(manifest.capabilities);
+    if (!capabilities.has("process_execution")) {
+      context.addIssue({
+        code: "custom",
+        path: ["capabilities"],
+        message: "The local supervised backend requires process execution",
+      });
+    }
+    if (
+      manifest.cancellation.requestSupported !==
+        capabilities.has("cancellation") ||
+      manifest.timeout.supported !== capabilities.has("timeout")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["capabilities"],
+        message: "Manifest support flags must match declared capabilities",
+      });
+    }
+  });
+export type ExecutionBackendManifest = z.infer<
+  typeof executionBackendManifestSchema
+>;
+
+export const executionRequestSchema = z.object({
+  schemaVersion: z.literal("1"),
+  id: z.string().uuid(),
+  backend: z.object({
+    id: z.string().min(3).max(120),
+    version: z.string().min(1).max(40),
+  }),
+  requiredCapabilities: z.array(executionCapabilitySchema).min(1).max(5),
+  binding: z.object({
+    objectiveRequestId: z.string().uuid(),
+    workspaceId: z.string().uuid(),
+    runId: z.string().uuid(),
+    planId: z.string().uuid(),
+    stepId: z.string().min(1).max(80),
+    capabilityId: capabilityIdSchema,
+    planDigest: sha256DigestSchema,
+    registrySnapshotId: sha256DigestSchema,
+  }),
+  projectContext: z.object({
+    id: z.string().uuid(),
+    revision: z.number().int().positive(),
+    digest: sha256DigestSchema,
+    objectiveRequestId: z.string().uuid(),
+    workspaceId: z.string().uuid(),
+  }),
+  descriptorDigest: sha256DigestSchema,
+  effectAssessment: z.object({
+    version: z.literal("planned-action-v1"),
+    severity: operationEffectClassSchema,
+    actionDigest: sha256DigestSchema,
+  }),
+  authorization: z.object({
+    policy: policyDecisionSchema,
+    policyDigest: sha256DigestSchema,
+    expectedApprovalDigest: sha256DigestSchema.optional(),
+    approval: z
+      .object({
+        id: z.string().uuid(),
+        status: z.literal("consumed"),
+        actionDigest: sha256DigestSchema,
+        planDigest: sha256DigestSchema,
+        rulesetVersion: z.string().min(1).max(40),
+        descriptorDigest: sha256DigestSchema,
+      })
+      .optional(),
+  }),
+  requirements: z.object({
+    processExecution: z.literal(true),
+    filesystemAccess: z.enum(["host_process", "workspace_confined"]),
+    networkRequired: z.boolean(),
+    networkAuthorized: z.boolean(),
+    cancellationRequired: z.boolean(),
+    timeoutMs: z.number().int().min(10).max(300_000),
+    maxOutputBytes: z.number().int().min(1).max(1_048_576),
+  }),
+  privacyMode: z.enum(["private", "standard"]),
+  budget: z.object({
+    timeoutMs: z.number().int().min(10).max(300_000),
+    maxOutputBytes: z.number().int().min(1).max(1_048_576),
+    consumptionAuthority: z.literal("runtime"),
+  }),
+  provenance: z.object({
+    source: z.literal("runtime"),
+    requestDigest: sha256DigestSchema,
+  }),
+});
+export type ExecutionRequest = z.infer<typeof executionRequestSchema>;
+
+export const executionGatewayLifecycleSchema = z.enum([
+  "accepted",
+  "prepared",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "timed_out",
+  "unknown",
+]);
+export type ExecutionGatewayLifecycle = z.infer<
+  typeof executionGatewayLifecycleSchema
+>;
+
+export const executionPreparationSchema = z.object({
+  schemaVersion: z.literal("1"),
+  requestId: z.string().uuid(),
+  backendId: z.string().min(3).max(120),
+  backendVersion: z.string().min(1).max(40),
+  lifecycle: z.literal("prepared"),
+  requestDigest: sha256DigestSchema,
+  descriptorDigest: sha256DigestSchema,
+});
+export type ExecutionPreparation = z.infer<typeof executionPreparationSchema>;
+
+export const executionResultSchema = z.object({
+  schemaVersion: z.literal("1"),
+  requestId: z.string().uuid(),
+  backendId: z.string().min(3).max(120),
+  backendVersion: z.string().min(1).max(40),
+  lifecycle: z.enum(["succeeded", "failed", "cancelled", "timed_out"]),
+  summary: z.string().min(1).max(500),
+  outputDigest: sha256DigestSchema,
+  treeTerminationConfirmed: z.boolean(),
+  appliedLimits: z.object({
+    timeoutMs: z.number().int().min(10).max(300_000),
+    maxOutputBytes: z.number().int().min(1).max(1_048_576),
+  }),
+  provenance: z.object({
+    requestDigest: sha256DigestSchema,
+    descriptorDigest: sha256DigestSchema,
+    backendBuildDigest: sha256DigestSchema,
+  }),
+});
+export type ExecutionResult = z.infer<typeof executionResultSchema>;
+
 export const approvalStatusSchema = z.enum([
   "pending",
   "granted",
