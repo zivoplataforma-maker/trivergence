@@ -1,6 +1,6 @@
 # Estado de implementación
 
-Última actualización: 2026-09-21
+Última actualización: 2026-09-22
 
 Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 `PLANNED` no iniciado, `BLOCKED` requiere una decisión o dependencia externa.
@@ -15,6 +15,59 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 | M5 — primer conector                | PARTIAL | Contrato/Reference Provider local verificados; ningún proveedor externo superó aún su gate.                        |
 | M6 — workflows, agentes y memoria   | DONE    | Pipeline local de cinco pasos, budgets, provenance, memoria, evaluación, auditoría, E2E y build verificados.       |
 | M7 — hardening/distribución Windows | PARTIAL | Controles y paquete unsigned verificados localmente; faltan reproducibilidad NSIS, firma y matriz limpia Win10/11. |
+| P3-0 — documentación y ADRs         | DONE    | Normalización documental, ownership y cuatro ADRs propuestos; sin cambios de código ni inicio funcional de P3.     |
+| P3-0.1 — revisión técnica de ADRs   | DONE    | ADR-0012 a ADR-0015 aceptados con correcciones documentales; implementación continúa pendiente.                    |
+| P3 — evolución arquitectónica       | PLANNED | Orden dependiente y capacidades futuras documentados; ninguna subfase funcional iniciada.                          |
+
+## P3-0 — normalización documental (2026-09-22)
+
+Estado: `DONE` exclusivamente para el alcance documental. P3-A1 no comenzó.
+
+- Prompt Maestro separa selección actual de rutas de selección integral futura
+  de providers;
+- Roadmap adopta el orden
+  `P3-A1 → P3-D0 → P3-E1 → P3-B1 → P3-B2 → P3-C → P3-A2 → P3-F1 → P3-F2`;
+- ownership normativo evita fuentes de verdad duplicadas entre Context,
+  Intelligence, Memory, Audit, Evidence, Trace, Runtime, Registry y gateways;
+- ADR-0011 registra que una lista de recovery capabilities no exige
+  automáticamente `recover()` y documenta la validación actual de AdapterHost
+  como deuda técnica;
+- ADR-0012 a ADR-0015 fueron propuestos en P3-0 y aceptados posteriormente en
+  P3-0.1; esta aceptación no los implementa;
+- dossiers de providers usan ADR-0011 como conclusión vigente sin cambiar gates
+  contractuales, autenticación, distribución o billing.
+- catálogo/manifests históricos aún nombran “Anthropic ant CLI” y recomiendan
+  Codex en código; como ningún provider superó todos los gates, esa metadata no
+  gobierna routing y queda registrada como deuda técnica posterior.
+
+No se modificaron contratos ejecutables, Runtime, ProviderAdapter, AdapterHost,
+trust store, autenticación ni providers. Reference Provider continúa siendo el
+único ejecutable. M5 y M7 permanecen `PARTIAL`.
+
+## P3-0.1 — revisión técnica de ADRs (2026-09-22)
+
+Estado: `DONE` para revisión y decisión documental. P3-A1 no comenzó.
+
+- ADR-0012 `ACCEPTED`: separa identidad remota, continuación e idempotencia en
+  un envelope versionado; el checkpoint local actual sigue sin migrar.
+- ADR-0013 `ACCEPTED`: conserva exactamente 14 checks y reserva el veredicto de
+  `interrupted_recovery` para un harness integrado observable; la callback
+  autoatestiguada actual sigue como deuda.
+- ADR-0014 `ACCEPTED`: separa severity de compensation assurance; Planner será
+  owner de una evaluación efectiva versionada. El enum y clasificador actuales
+  no cambiaron.
+- ADR-0015 `ACCEPTED`: define un manifest inmutable de referencias/digests para
+  estado confirmado. No existe schema ni persistencia de snapshots todavía y
+  branching continúa experimental.
+
+Se documentó la única contradicción normativa: `REVERSIBLE` deja de ser un
+escalón ordinal y se preserva solo como representación ejecutable histórica
+equivalente a `SIDE_EFFECTFUL + DEFINED`. ADR-0011 fue aclarado sin cambiar sus
+garantías de UNKNOWN/retry.
+
+No se modificó código, configuración, contratos ejecutables, tests,
+autenticación ni trust store. Ningún provider fue habilitado; Reference Provider
+continúa siendo el único ejecutable. M5 y M7 permanecen `PARTIAL`.
 
 ## M5-B0 — contrato de recovery (2026-09-21)
 
@@ -42,8 +95,9 @@ tocó.
 
 Evidencia local final: formato, lint, build y typecheck de 12 proyectos; **149
 tests**; Electron E2E y smoke; auditoría sin vulnerabilidades conocidas; SBOM
-CycloneDX verificado con 451 componentes. La ejecución Windows de CI se registra
-en el commit de esta fase.
+CycloneDX verificado con 451 componentes. CI Windows run `35608108255`:
+`success`. Commit de cierre: `ba69a26293aead9efaa2f06069a02e0be7d0f67c`; `main`
+y `origin/main` quedaron sincronizados (`0/0`) y el árbol limpio.
 
 ## M5-A — Gate definitivo de Codex App Server (2026-09-15)
 
@@ -51,8 +105,9 @@ Resultado global: `UNRESOLVED`. La interfaz técnica oficial, `stdio`, schemas,
 streaming, cancelación y login gestionado son candidatos viables, pero el
 comando figura experimental/no soportado para producción y no existe una
 respuesta contractual inequívoca para una aplicación open-source de terceros con
-cuentas Plus/Pro. Tampoco hay recovery documentado de un turn desde el
-checkpoint exigido por dos de las 14 comprobaciones.
+cuentas Plus/Pro. No hay recovery documentado del mismo turn; bajo ADR-0011 esto
+es una capability ausente manejable mediante el límite UNKNOWN, no un bloqueo
+técnico universal.
 
 Se creó el expediente, las preguntas para OpenAI y el threat model específico.
 No se creó adapter ni spike, no se habilitó Codex, no cambió el trust store y M5
@@ -67,12 +122,14 @@ ofrece OAuth ni lee credenciales. Pro, Max, Team y Enterprise pueden consumir
 hoy sus límites de suscripción; Free no incluye Claude Code. Claude Platform
 mediante `ant` queda como alternativa sin clave manual y billing API separado.
 
-El gate técnico sigue abierto por la ausencia de recovery compatible con dos
-comprobaciones. El contractual sigue abierto porque Agent SDK prohíbe ofrecer
-login/rate limits Claude.ai sin aprobación y debe confirmarse que el uso exacto
-como provider cae dentro del permiso para ejecutar el binario oficial. Se
-crearon expediente, preguntas y threat model; no se creó adapter ni spike, no se
-habilitó Claude, no cambió el trust store y M5 permanece `PARTIAL`.
+La ausencia de exact recovery fue un bloqueo técnico bajo el contrato anterior;
+M5-B0 eliminó ese requisito universal y ahora una interrupción sin primitive
+suficiente falla seguro mediante `remote_state_unknown`. El gate contractual
+sigue abierto porque debe confirmarse que el uso exacto como provider cae dentro
+de la autorización aplicable y no introduce un login/rate-limit propio no
+permitido. Se crearon expediente, preguntas y threat model; no se creó adapter
+ni spike, no se habilitó Claude, no cambió el trust store y M5 permanece
+`PARTIAL`.
 
 ## M5-A3 — Gate de Google/Gemini (2026-09-15)
 
@@ -88,13 +145,14 @@ queda `CONDITIONALLY_APPROVED` solo como alternativa futura porque exige
 key/auth key, proyecto y billing separados. No se añadió soporte de keys ni se
 autorizó su implementación.
 
-Vertex AI mediante ADC/OAuth/IAM y proyecto facturable del usuario es la mejor
-ruta oficial sin API key, pero permanece `UNRESOLVED`: no está demostrada la
-recuperación exacta de inferencia online ni la disponibilidad de Interactions
-background bajo Vertex/ADC, y falta aprobar la frontera de custodia ADC. Se
-crearon expediente, preguntas y threat model. No hubo adapter, spike, cambios de
-ProviderAdapter/trust store ni activación; Reference Provider continúa siendo el
-único ejecutable. M5 y M7 permanecen `PARTIAL`.
+Vertex AI mediante ADC/OAuth/IAM y proyecto facturable del usuario permanece
+`UNRESOLVED`. Tras M5-B0, la ausencia de exact recovery de inferencia online ya
+no es un bloqueo técnico universal: puede operar bajo el límite seguro UNKNOWN.
+Aún faltan aprobar custodia ADC, binding cuenta/proyecto, billing, contrato y
+evidencia real de las capabilities declarables. Se crearon expediente, preguntas
+y threat model. No hubo adapter, spike, cambios de ProviderAdapter/trust store
+ni activación; Reference Provider continúa siendo el único ejecutable. M5 y M7
+permanecen `PARTIAL`.
 
 ## P2 — product hardening y preparación de M5 (2026-09-15)
 
@@ -188,6 +246,38 @@ siguen `PARTIAL` dentro de M5. Ninguna evidencia de este cambio cierra M7.
 - Detalle de diseño, límites y amenaza: `docs/design/orchestration-space.md` y
   `docs/architecture/provider-configuration.md`.
 
+## Evolución arquitectónica investigada (2026-09-21)
+
+Estado: `PLANNED` / `EXPERIMENTAL`. Esta sección **no describe funciones
+implementadas** y no modifica M5, M6 ni M7.
+
+Se consolidaron funciones útiles para una futura P3 sin adoptar como núcleo los
+sistemas usados durante la investigación:
+
+- `PLANNED` P3-A1: Project Context mínimo, versionado por workspace;
+- `PLANNED` P3-D0: contrato de Execution Gateway sobre ejecución supervisada;
+- `PLANNED` P3-E1: estado durable de workflows y snapshots confirmados;
+- `PLANNED` P3-B1: perfiles declarativos por capabilities, permisos y budgets;
+- `PLANNED` P3-B2: fan-out/fan-in con concurrencia, cancelación, budget
+  agregado, evaluación y provenance;
+- `PLANNED` P3-C: Tool Gateway mediante MCP bajo Registry → Policy → Approval →
+  Runtime → Evidence;
+- `PLANNED` P3-A2: Project Intelligence derivada con citas, provenance, context
+  packs y detector de deriva con revisión humana;
+- `PLANNED` P3-F1: Trivergence Trace como proyección correlacionada;
+- `PLANNED` P3-F2: exporter OpenTelemetry opt-in y sanitizado;
+- `EXPERIMENTAL`: Agent Gateway mediante A2A;
+- `EXPERIMENTAL`: automatización web con niveles de riesgo y approvals;
+- `EXPERIMENTAL`: knowledge graph relacional/temporal, embeddings opcionales y
+  branching desde `WorkflowExecutionSnapshot` confirmado, nunca desde un
+  `ProviderRecoveryCheckpoint`;
+- `OUT OF SCOPE` para el compromiso actual: marketplace público de código no
+  auditado, autonomía destructiva, IDE completo y modelo fundacional propio.
+
+La arquitectura objetivo y el orden están documentados en
+`TRIVERGENCE_PROMPT_MAESTRO_CODEX.md` y `ROADMAP.md`. Ninguna capacidad de esta
+sección puede marcarse `DONE` sin implementación y evidencia propias.
+
 ## Entorno de descubrimiento
 
 - Windows 11, PowerShell 5.1.
@@ -259,9 +349,11 @@ No implica cierre de M5 ni M7.
 - Provider Adapter: puente genérico, transporte streaming, cancelación, budgets,
   preview de contexto, provenance y errores tipados verificados; el uso parcial
   y el último checkpoint válido sobreviven a fallos/cancelación.
-- Recuperación de proveedor: checkpoint persistido y ligado a plan/paso/adapter,
-  reinicio de Runtime, aprobación nueva, reanudación y consumo único
-  verificados.
+- Recuperación histórica del Reference Provider: checkpoint local persistido y
+  ligado a plan/paso/adapter, reinicio de Runtime, aprobación nueva, reanudación
+  y consumo único verificados. M5-B0 reemplazó la generalización de este
+  mecanismo por capabilities explícitas y `remote_state_unknown` para providers
+  reales.
 - Workspace: raíz canónica e identidad revalidada, exclusiones obligatorias y
   del usuario, `.gitignore` conservador, UTF-8/tamaño, traversal, ADS, rutas
   absolutas y junction externo verificados.

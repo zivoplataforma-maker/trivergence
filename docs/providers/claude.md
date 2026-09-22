@@ -20,7 +20,8 @@ alternativa oficial sin clave manual, pero con facturación API separada.
 ## Decisión
 
 - Technical Gate: `UNRESOLVED`; streaming y cancelación están documentados, pero
-  no existe recovery del mismo turn interrumpido.
+  falta validar la frontera segura real en Windows. No existe recovery del mismo
+  turn, por lo que la ruta declararía capabilities vacías y usaría UNKNOWN.
 - Security Gate: `CONDITIONALLY_APPROVED`; los modos safe/restricted y tools
   vacías permiten un diseño aislado, todavía sin prueba real.
 - Authentication Gate: `CONDITIONALLY_APPROVED`; el cliente oficial posee el
@@ -35,6 +36,9 @@ alternativa oficial sin clave manual, pero con facturación API separada.
 
 No se construye adapter ni spike mientras los gates técnico y contractual sigan
 sin resolver.
+
+ADR-0011 establece que exact recovery no es requisito universal. La carencia de
+turn recovery limita la capability; no aprueba ni rechaza por sí sola la ruta.
 
 ## Límites expresos
 

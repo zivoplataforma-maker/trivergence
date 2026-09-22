@@ -1,7 +1,8 @@
 # ADR-0011: semántica de recuperación e incertidumbre remota
 
 Estado: `ACCEPTED`  
-Fecha: 2026-09-21
+Fecha: 2026-09-21  
+Clarificación documental P3-0: 2026-09-22
 
 ## Problema
 
@@ -77,6 +78,32 @@ La lista vacía significa que el provider no ofrece recuperación. Declarar
 `exact_recovery` exige al menos una primitive de identidad/continuación y no
 autoriza retries por sí solo.
 
+#### Relación entre capabilities y operaciones del adapter
+
+Una lista no vacía **no implica por sí sola que el adapter deba implementar
+`recover()`**. La capability declara una propiedad observable; el contrato debe
+asignarla a una operación concreta:
+
+| Capability         | Operación conceptual                                   | ¿Exige `recover()` por sí sola?                                                                        |
+| ------------------ | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `local_checkpoint` | continuar desde estado local validado                  | Sí cuando esa continuación se expone mediante el contrato actual de recovery                           |
+| `stream_reconnect` | reconectar al mismo stream                             | Sí cuando `recover()` es la operación pública de reconexión                                            |
+| `operation_query`  | consultar estado por operation ID                      | No; es observación independiente y puede alimentar una decisión posterior                              |
+| `operation_resume` | continuar la misma operación pausada                   | Sí cuando se expone como recovery                                                                      |
+| `idempotent_retry` | repetir explícitamente con la misma identidad/key      | Sí para ejecutar el retry, pero nunca lo autoriza automáticamente                                      |
+| `remote_cancel`    | solicitar y confirmar cancelación remota               | No; pertenece a la operación de cancelación y su estado                                                |
+| `exact_recovery`   | garantía compuesta de identidad, output y contabilidad | No define una llamada propia; exige que las primitives que la sustentan estén implementadas y probadas |
+
+El contrato futuro puede nombrar operaciones separadas de query, reconnect,
+resume y cancel. Hasta entonces, un adapter solo debe exponer por `recover()`
+las primitives que realmente pueda ejecutar por esa vía; no debe añadir un
+método vacío para satisfacer una regla estructural.
+
+**Deuda técnica vigente:** `AdapterHost` rechaza actualmente cualquier manifest
+con recovery capabilities no vacías cuando falta `recover()`. Esa validación es
+más amplia que esta decisión y acopla `operation_query`/`remote_cancel` a
+`recover()`. P3-0 documenta el desajuste; no modifica el código.
+
 ### 2. Estado de ejecución remoto
 
 Los adapters y Runtime representan explícitamente:
@@ -87,21 +114,25 @@ Desde cualquier estado no terminal puede llegarse a `REMOTE_STATE_UNKNOWN`.
 `CANCEL_REQUESTED` no equivale a `CANCELLED`. Los estados terminales solo se
 aceptan cuando el adapter tiene evidencia suficiente para afirmarlos.
 
-### 3. Clase de efecto
+### 3. Evaluación de efectos
 
-Cada acción declara o recibe una clasificación conservadora:
+[ADR-0014](0014-conservative-operation-effect-classification.md) refina la
+representación original de esta sección sin cambiar su regla conservadora. La
+severidad es `PURE < READ_ONLY < SIDE_EFFECTFUL < IRREVERSIBLE`; la
+compensación/reversibilidad es metadata ortogonal
+`NOT_APPLICABLE | NONE | DEFINED | VERIFIED`.
 
-- `PURE`: cálculo local sin efecto observable;
-- `READ_ONLY`: observa estado externo sin modificarlo;
-- `REVERSIBLE`: modifica, pero tiene compensación definida y aprobada;
-- `SIDE_EFFECTFUL`: puede producir cambios, mensajes, comandos, billing o una
-  nueva inferencia;
-- `IRREVERSIBLE`: delete/publicación/acción externa no compensable.
+El valor histórico `REVERSIBLE` no es un escalón ordinal de seguridad: durante
+la futura migración equivale a `SIDE_EFFECTFUL + DEFINED` y no reduce approval,
+recovery ni retry. La evaluación efectiva nunca puede quedar por debajo del
+mínimo derivado de kind, destructive/risk, destino, declaración y policy
+metadata.
 
-En ausencia de declaración, `read` puro se clasifica `READ_ONLY`; cualquier
-`write`, `execute`, `network`, `git`, `delete`, `system` o `credentials` se
-clasifica al menos `SIDE_EFFECTFUL`, y destructive/delete como `IRREVERSIBLE`.
-El valor entra en el plan/descriptor y por tanto en integridad y aprobación.
+En ausencia de evidencia suficiente, cualquier `write`, `execute`, `network`,
+`git`, `delete`, `system` o `credentials` se clasifica al menos
+`SIDE_EFFECTFUL`, y destructive/delete como `IRREVERSIBLE`. El código actual
+todavía conserva el enum histórico y permite precedencia de una declaración; esa
+es deuda de implementación, no una excepción normativa.
 
 ### 4. Responsabilidades
 
@@ -111,11 +142,19 @@ El **ProviderAdapter** debe:
 - preservar request/operation identity y provenance;
 - devolver estado remoto honesto;
 - contabilizar usage acumulado de la cadena recuperada;
-- implementar `recover` solo cuando una capability lo justifica;
+- implementar `recover` solo cuando una capability asignada a esa operación lo
+  justifica;
+- exponer query/cancel por su operación correspondiente cuando no constituyan
+  recovery;
 - nunca convertir pérdida de transporte en failure/cancelled confirmado.
 
 El **AdapterHost** valida manifest/preview/result, combinación de capabilities,
 checkpoint y coherencia outcome/estado. No decide retries.
+
+La validación objetivo de AdapterHost debe comprobar la compatibilidad entre
+cada capability y la operación que la implementa, no usar “lista no vacía” como
+sinónimo de `recover()` disponible. Este cambio queda pendiente de ADR aprobado,
+contrato versionado y tests.
 
 El **Orchestration Runtime** debe:
 
@@ -164,6 +203,12 @@ del límite de dispatch, respuesta/stream perdidos, cancelación no confirmada,
 declaración de operation query, provider idempotente sin retry automático,
 efectos, budgets, resolución humana y conservación de provenance.
 
+La garantía `interrupted_recovery` pertenece a la integración Adapter +
+AdapterHost + Runtime + persistence. La suite reusable actual delega parte de
+esta verificación a una callback del fixture; por ello no debe describirse como
+auto-suficiente. [ADR-0013](0013-integrated-interrupted-recovery-conformance.md)
+define el harness objetivo sin modificar las 14 comprobaciones en P3-0.
+
 ## Compatibilidad
 
 El Reference Provider migra de `single_checkpoint_retry` a
@@ -207,6 +252,15 @@ universal.
 Riesgo residual: persistir `DISPATCHING` antes del invoke produce falsos UNKNOWN
 si el proceso muere en esa ventana. Es deliberadamente conservador: nunca se
 convierte en “no ocurrió” sin prueba.
+
+El payload persistido actual sigue orientado al cursor local del Reference
+Provider. [ADR-0012](0012-provider-agnostic-recovery-envelope.md) propone un
+envelope discriminado provider-agnostic; no está implementado.
+
+La elevación conservadora de effect class se especifica en
+[ADR-0014](0014-conservative-operation-effect-classification.md). El código
+actual todavía permite que una declaración explícita preceda al mínimo derivado;
+esa discrepancia es deuda técnica, no una relajación de esta decisión.
 
 ## Alternativas descartadas
 

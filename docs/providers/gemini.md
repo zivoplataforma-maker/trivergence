@@ -13,7 +13,8 @@ Este resumen queda subordinado al [expediente M5-A3](google-gemini-gate.md), las
 ## Resultado
 
 Google no ofrece hoy una ruta demostrada que reúna simultáneamente el flujo
-principal sin API key y el contrato de recovery de Trivergence:
+principal sin API key y todos los gates de autenticación, custodia, contrato y
+billing de Trivergence:
 
 - Gemini CLI con login Google no puede usarse como backend tercero ni mediante
   piggyback OAuth. El acceso consumidor Individual/Google AI Pro/Ultra terminó
@@ -24,8 +25,10 @@ principal sin API key y el contrato de recovery de Trivergence:
   exact recovery documentado, pero requiere API key/auth key, proyecto y billing
   propios. No se implementa ni se agrega una UX de keys.
 - Vertex AI mediante ADC/OAuth/IAM y proyecto Cloud del usuario es la mejor ruta
-  sin API key. Sigue `UNRESOLVED` porque no se ha demostrado exact recovery para
-  inferencia online/Vertex ni cerrado la frontera de custodia ADC.
+  sin API key. Sigue `UNRESOLVED` por la frontera de custodia ADC, binding de
+  cuenta/proyecto, billing, contrato y evidencia real. La inferencia online no
+  demuestra exact recovery, pero puede declarar recovery vacío y fallar seguro
+  mediante UNKNOWN.
 
 No se construye adapter o spike, no se modifica ProviderAdapter o el trust store
 y Gemini permanece deshabilitado. Reference Provider es el único ejecutable.

@@ -163,14 +163,27 @@ enviar prompts ni capturar resultados.
 | Proveedor          | Detectar  | Login visible   | Prompt estructurado                        |
 | ------------------ | --------- | --------------- | ------------------------------------------ |
 | Reference Provider | local     | no aplica       | implementado; memoria, sin red             |
-| Codex              | candidato | candidato       | App Server preferido; gate aún pendiente   |
-| Claude Code        | candidato | externo/visible | suscripción rechazada; evaluar `ant` OAuth |
-| Gemini CLI         | candidato | externo/visible | OAuth rechazado; evaluar Vertex OAuth/ADC  |
-| Ollama             | candidato | no aplica       | P1, local y opt-in                         |
+| Codex              | candidato | candidato       | App Server `UNRESOLVED`; sin preferencia   |
+| Claude Code        | candidato | externo/visible | ruta oficial evaluada, gate `UNRESOLVED`   |
+| Gemini CLI         | rechazado | externo/visible | OAuth/piggyback rechazado; Vertex separado |
+| Ollama             | candidato | no aplica       | no habilitado; gate futuro                 |
 
 “Candidato” no significa implementado. El Reference Provider verifica la
 infraestructura, no la compatibilidad de los candidatos; ver
 `IMPLEMENTATION_STATUS.md`.
+
+## Discrepancia de metadata pendiente
+
+La metadata ejecutable histórica todavía contiene nombres/rutas anteriores —por
+ejemplo “Anthropic ant CLI”— y exporta `recommendedFirstProviderId = "codex"`.
+Los expedientes vigentes no eligen ganador: Claude Code es la ruta Anthropic
+principal evaluada, Codex/Claude/Vertex siguen `UNRESOLVED` y Gemini
+Interactions es solo alternativa con credencial/proyecto.
+
+P3-0 no modifica código. Corregir catálogo/manifests y eliminar la recomendación
+codificada requiere una fase posterior de deuda técnica con tests, sin habilitar
+ningún provider ni alterar el trust store. Hasta entonces esa metadata es
+informativa y no puede usarse como autorización o routing.
 
 La metodología y la evidencia vigente se encuentran en
 [Metodología del gate](../providers/gate-methodology.md),

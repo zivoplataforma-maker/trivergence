@@ -12,14 +12,14 @@ No habilita Claude, no aprueba una attestation y no cambia M5 de `PARTIAL`.
 
 ## Decisión
 
-| Gate                    | Resultado                | Motivo determinante                                                                                                                        |
-| ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Technical Gate          | `UNRESOLVED`             | `claude -p` documenta JSONL, cancelación y sesiones, pero no recupera el mismo turn interrumpido y el modo seguro con OAuth debe probarse. |
-| Security Gate           | `CONDITIONALLY_APPROVED` | `--safe-mode`, `--restricted` y tools vacías permiten diseñar aislamiento; falta verificar que ninguna autoridad escape.                   |
-| Authentication Gate     | `CONDITIONALLY_APPROVED` | El binario oficial puede autenticar al usuario; Trivergence no puede ofrecer, copiar ni intermediar el login Claude.ai.                    |
-| Contractual Gate        | `UNRESOLVED`             | La página legal permite ejecutar Claude Code inalterado en productos, pero Agent SDK exige aprobación para login/rate limits propios.      |
-| Distribution Gate       | `CONDITIONALLY_APPROVED` | Anthropic permite ejecutar el binario publicado sin modificar; se exige instalación independiente y verificación de release.               |
-| Commercial/Billing Gate | `CONDITIONALLY_APPROVED` | Hoy `claude -p` y apps de terceros consumen límites de la suscripción; Free no incluye Claude Code y el modelo anunciado está pausado.     |
+| Gate                    | Resultado                | Motivo determinante                                                                                                                                                            |
+| ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Technical Gate          | `UNRESOLVED`             | `claude -p` documenta JSONL, cancelación y sesiones; falta probar en Windows el modo seguro con autenticación oficial. La ausencia de turn recovery no bloquea universalmente. |
+| Security Gate           | `CONDITIONALLY_APPROVED` | `--safe-mode`, `--restricted` y tools vacías permiten diseñar aislamiento; falta verificar que ninguna autoridad escape.                                                       |
+| Authentication Gate     | `CONDITIONALLY_APPROVED` | El binario oficial puede autenticar al usuario; Trivergence no puede ofrecer, copiar ni intermediar el login Claude.ai.                                                        |
+| Contractual Gate        | `UNRESOLVED`             | La página legal permite ejecutar Claude Code inalterado en productos, pero Agent SDK exige aprobación para login/rate limits propios.                                          |
+| Distribution Gate       | `CONDITIONALLY_APPROVED` | Anthropic permite ejecutar el binario publicado sin modificar; se exige instalación independiente y verificación de release.                                                   |
+| Commercial/Billing Gate | `CONDITIONALLY_APPROVED` | Hoy `claude -p` y apps de terceros consumen límites de la suscripción; Free no incluye Claude Code y el modelo anunciado está pausado.                                         |
 
 Regla aplicada: los gates técnico y contractual obligatorios permanecen
 `UNRESOLVED`; por tanto, la decisión global es **`UNRESOLVED`**.
@@ -177,42 +177,44 @@ Reglas obligatorias:
 No se ejecutó la suite contra Claude: no existe adapter ni autorización. Los
 resultados siguientes son conceptuales y la suite no fue modificada.
 
-| Comprobación              | Resultado   | Evidencia o gap                                                        |
-| ------------------------- | ----------- | ---------------------------------------------------------------------- |
-| `capability_declaration`  | `PASSABLE`  | Manifest estático y flags allowlisted permiten declaración cerrada.    |
-| `prepare_context_preview` | `PASSABLE`  | Se realiza localmente antes de iniciar Claude Code.                    |
-| `execute_and_stream`      | `PASSABLE`  | `-p` y `stream-json` están documentados oficialmente.                  |
-| `cancellation`            | `ADAPTABLE` | SIGINT/SIGTERM están documentados; falta probar Windows y late events. |
-| `recovery`                | `BLOCKED`   | Resume conserva sesión, no reinicia el mismo turn exactamente.         |
-| `interrupted_recovery`    | `BLOCKED`   | SIGTERM deja el turn sin result; no hay checkpoint idempotente.        |
-| `timeout`                 | `ADAPTABLE` | Supervisor, señales y kill tree con límite estricto.                   |
-| `typed_failure`           | `ADAPTABLE` | Result JSON y exit code existen; algunos errores llegan por stdout.    |
-| `input_budget`            | `ADAPTABLE` | Límite local de bytes; falta conteo de tokens preflight.               |
-| `output_budget`           | `ADAPTABLE` | Presupuesto monetario/turnos y límite incremental de bytes.            |
-| `provenance`              | `PASSABLE`  | Session ID, modelo, coste estimado, versión y digest.                  |
-| `approval_boundary`       | `ADAPTABLE` | Tools vacías y prompts sin host deben verificarse como fail-closed.    |
-| `malformed_response`      | `ADAPTABLE` | Parser JSONL incremental y schemas cerrados.                           |
-| `unavailable_provider`    | `PASSABLE`  | Sin attestation no se registra en AdapterHost.                         |
+| Comprobación              | Resultado   | Evidencia o gap                                                             |
+| ------------------------- | ----------- | --------------------------------------------------------------------------- |
+| `capability_declaration`  | `PASSABLE`  | Manifest estático y flags allowlisted permiten declaración cerrada.         |
+| `prepare_context_preview` | `PASSABLE`  | Se realiza localmente antes de iniciar Claude Code.                         |
+| `execute_and_stream`      | `PASSABLE`  | `-p` y `stream-json` están documentados oficialmente.                       |
+| `cancellation`            | `ADAPTABLE` | SIGINT/SIGTERM están documentados; falta probar Windows y late events.      |
+| `recovery`                | `ADAPTABLE` | Manifest con capabilities vacías y rechazo tipado de recovery no soportado. |
+| `interrupted_recovery`    | `ADAPTABLE` | El harness integrado debe demostrar UNKNOWN, evidencia y ausencia de retry. |
+| `timeout`                 | `ADAPTABLE` | Supervisor, señales y kill tree con límite estricto.                        |
+| `typed_failure`           | `ADAPTABLE` | Result JSON y exit code existen; algunos errores llegan por stdout.         |
+| `input_budget`            | `ADAPTABLE` | Límite local de bytes; falta conteo de tokens preflight.                    |
+| `output_budget`           | `ADAPTABLE` | Presupuesto monetario/turnos y límite incremental de bytes.                 |
+| `provenance`              | `PASSABLE`  | Session ID, modelo, coste estimado, versión y digest.                       |
+| `approval_boundary`       | `ADAPTABLE` | Tools vacías y prompts sin host deben verificarse como fail-closed.         |
+| `malformed_response`      | `ADAPTABLE` | Parser JSONL incremental y schemas cerrados.                                |
+| `unavailable_provider`    | `PASSABLE`  | Sin attestation no se registra en AdapterHost.                              |
 
-Resumen: **5 `PASSABLE`, 7 `ADAPTABLE`, 2 `BLOCKED`, 0 PASS reales**.
+Resumen vigente: **5 `PASSABLE`, 9 `ADAPTABLE`, 0 PASS reales**. Ningún
+resultado declara exact recovery.
 
 ## Comparación objetiva con Codex
 
-| Dimensión               | Codex App Server                                 | Mejor vía Claude: Claude Code oficial e inalterado                |
-| ----------------------- | ------------------------------------------------ | ----------------------------------------------------------------- |
-| Technical               | Comando experimental/no soportado en producción  | `-p`, JSONL, cancel y controles documentados; recovery incompleto |
-| Authentication          | ChatGPT login poseído por Codex                  | Login poseído por Claude Code; OAuth no se expone a Trivergence   |
-| Contractual             | Plus/Pro de terceros no aclarado                 | Ejecución en productos permitida; frontera Agent SDK ambigua      |
-| Distribution            | Código Apache-2.0; instalación externa preferida | Binario propietario inalterado; instalación externa obligatoria   |
-| Recovery                | Sin checkpoint de turn                           | Resume sesión, no el mismo turn interrumpido                      |
-| Conformance             | 12 adaptables, 2 bloqueadas                      | 5 passables, 7 adaptables, 2 bloqueadas                           |
-| Cost model              | Entitlement Plus/Pro no resuelto                 | Límites Pro/Max/Team/Enterprise propios; política puede cambiar   |
-| Production maturity     | App Server expresamente experimental             | CLI oficial de producción con interfaz programática               |
-| Third-party suitability | Intención técnica, autorización ambigua          | Puede correr inalterado en productos; no OAuth/SDK propio         |
+| Dimensión               | Codex App Server                                 | Mejor vía Claude: Claude Code oficial e inalterado              |
+| ----------------------- | ------------------------------------------------ | --------------------------------------------------------------- |
+| Technical               | Comando experimental/no soportado en producción  | `-p`, JSONL, cancel y controles documentados; sin turn recovery |
+| Authentication          | ChatGPT login poseído por Codex                  | Login poseído por Claude Code; OAuth no se expone a Trivergence |
+| Contractual             | Plus/Pro de terceros no aclarado                 | Ejecución en productos permitida; frontera Agent SDK ambigua    |
+| Distribution            | Código Apache-2.0; instalación externa preferida | Binario propietario inalterado; instalación externa obligatoria |
+| Recovery                | Sin turn recovery; UNKNOWN seguro por probar     | Resume sesión, no el mismo turn; UNKNOWN seguro por probar      |
+| Conformance             | 14 adaptables conceptuales                       | 5 passables, 9 adaptables conceptuales                          |
+| Cost model              | Entitlement Plus/Pro no resuelto                 | Límites Pro/Max/Team/Enterprise propios; política puede cambiar |
+| Production maturity     | App Server expresamente experimental             | CLI oficial de producción con interfaz programática             |
+| Third-party suitability | Intención técnica, autorización ambigua          | Puede correr inalterado en productos; no OAuth/SDK propio       |
 
-Claude presenta una ruta sin API key más explícita, pero no cumple hoy el
-recovery obligatorio y la diferencia entre lanzar el cliente oficial y ofrecer
-un login propio requiere confirmación. No existe todavía un ganador habilitable.
+Claude presenta una ruta sin API key más explícita, pero la diferencia entre
+lanzar el cliente oficial y ofrecer un login propio requiere confirmación. La
+ausencia de exact recovery limita capabilities; no decide el gate. No existe
+todavía un ganador habilitable.
 
 ## Coste y ownership
 
@@ -235,7 +237,7 @@ un login propio requiere confirmación. No existe todavía un ganador habilitabl
   productos;
 - aclaración de la tensión con la prohibición de login/rate limits del Agent
   SDK;
-- recovery idempotente compatible con ambas pruebas;
+- manifest honesto de recovery y prueba integrada del límite UNKNOWN;
 - combinación segura y soportada de `--safe-mode`, `--restricted`, tools vacías,
   MCP vacío y autenticación de suscripción;
 - política Windows de instalación externa, firma/digest, updates y soporte;
@@ -262,3 +264,8 @@ Esto elimina la ausencia de exact recovery como bloqueo técnico universal, no
 como gap del producto. La decisión global continúa `UNRESOLVED` por las
 fronteras contractual, de autenticación, billing y distribución ya documentadas.
 No se autorizan adapter ni spike.
+
+Las clasificaciones `BLOCKED` de recovery previas a M5-B0 fueron una evaluación
+histórica bajo el contrato que exigía exact recovery universal. Las tablas
+vigentes se normalizaron el 2026-09-22; la historia permanece en Git y no altera
+la evidencia de que `--resume` no recupera el mismo turn.

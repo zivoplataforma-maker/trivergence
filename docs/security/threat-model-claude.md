@@ -76,7 +76,8 @@ SDK con OAuth propio, API key solicitada en la UI, `setup-token`,
 
 La cancelación local puede no detener inmediatamente el procesamiento remoto o
 el consumo. Resume restaura una sesión, pero no existe recovery idempotente
-documentado del mismo turn interrumpido. Tampoco está confirmada la frontera
-entre ejecutar Claude Code inalterado en un producto y ofrecer login mediante
-Agent SDK. Hasta resolver esos puntos, este diseño no autoriza implementación ni
-ejecución.
+documentado del mismo turn interrumpido; la integración tendría que declarar
+capabilities vacías y demostrar UNKNOWN seguro. Tampoco está confirmada la
+frontera entre ejecutar Claude Code inalterado en un producto y ofrecer login
+mediante Agent SDK. Hasta resolver esos puntos, este diseño no autoriza
+implementación ni ejecución.

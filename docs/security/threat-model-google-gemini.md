@@ -46,7 +46,7 @@ Fronteras:
 | Oversized/malformed stream               | SSE/JSON agota memoria o parser                               | límites por evento/total/tiempo, backpressure, parser incremental estricto, depth/string caps y error tipado                             |
 | Cancellation failure                     | Abort local deja trabajo/costo remoto                         | preferir operación identificable; confirmar cancel remoto; estado `cancel_requested` hasta terminal; no afirmar cancelado sin evidencia  |
 | Orphan process/request                   | Desktop cae con interacción/job activa                        | journal content-free con provider/operation ID; reconciliación al reiniciar; no re-prompt automático                                     |
-| Replay/duplicate billing                 | Timeout provoca request duplicada                             | IDs/idempotency oficiales solamente; si no existen, estado `outcome_unknown`, recuperación o intervención humana                         |
+| Replay/duplicate billing                 | Timeout provoca request duplicada                             | IDs/idempotency oficiales solamente; si no existen, estado `remote_state_unknown`, recuperación o intervención humana                    |
 | Recovery confusion                       | Historial previo se presenta como mismo turn                  | distinguir continuation de exact recovery; comprobar immutable request fingerprint y operation/interaction ID                            |
 | Session/retention leak                   | `store=true` conserva contenido inesperado                    | preview de retención, consentimiento, project policy, delete verificable; privado usa stateless y renuncia a recovery si es incompatible |
 | Cross-tenant leakage                     | Cache/session compartida entre workspaces/cuentas             | namespaces por provider/principal/project/workspace; nunca reutilizar `previous_interaction_id` fuera del binding                        |
@@ -67,12 +67,12 @@ Fronteras:
 
 ## Riesgo residual por ruta
 
-| Ruta                    | Riesgo residual                                                          | Resultado                                             |
-| ----------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------- |
-| Gemini CLI login Google | prohibición contractual y boundary de OAuth                              | no mitigable técnicamente: `REJECTED`                 |
-| Code Assist             | no existe provider API y redistribución restringida                      | no mitigable: `REJECTED`                              |
-| Gemini API              | key/auth key, retención y billing; recovery sí existe en background      | mitigable con gate futuro, pero fuera de UX principal |
-| Vertex AI + ADC         | refresh credential accesible al proceso, IAM/billing y recovery faltante | `UNRESOLVED` hasta respuesta/ADR                      |
+| Ruta                    | Riesgo residual                                                               | Resultado                                             |
+| ----------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Gemini CLI login Google | prohibición contractual y boundary de OAuth                                   | no mitigable técnicamente: `REJECTED`                 |
+| Code Assist             | no existe provider API y redistribución restringida                           | no mitigable: `REJECTED`                              |
+| Gemini API              | key/auth key, retención y billing; recovery sí existe en background           | mitigable con gate futuro, pero fuera de UX principal |
+| Vertex AI + ADC         | refresh credential accesible al proceso, IAM/billing y recovery no demostrado | `UNRESOLVED`; recovery vacío usa UNKNOWN seguro       |
 
 ## Tests mínimos de un futuro spike autorizado
 

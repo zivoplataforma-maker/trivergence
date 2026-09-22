@@ -1,274 +1,342 @@
 # Roadmap de Trivergence
 
-El roadmap usa puertas de evidencia, no porcentajes subjetivos. El orden refleja
-que Trivergence es un sistema de orquestación: primero decide y explica; después
-ejecuta y conecta subsistemas.
+Última revisión: 2026-09-22
 
-## P2 — product hardening y preparación de M5
+El roadmap usa puertas de evidencia, no porcentajes subjetivos. Trivergence
+evoluciona desde un núcleo de orquestación verificable hacia una capa
+interoperable de providers, agentes, tools, conocimiento y ejecución. Ninguna
+extensión futura debe retrasar artificialmente un gate independiente ni entrar
+al core sin ADR, budgets, policy, threat model y aceptación proporcional al
+riesgo.
 
-Estado: `DONE` para el alcance interno de consolidación, sin activar conectores.
-Los gates locales y la
-[CI Windows 34966426691](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34966426691)
-pasaron.
+## Estado resumido
 
-- recorrido Objective-first visible y unido a los estados reales de Strategy,
-  preflight, aprobación, Runtime, postflight y evidencia;
-- frontera única `AdapterHost` obligatoria para todo `ProviderStepDispatcher`;
-- suite de conformidad reutilizable de 14 checks aprobada por Reference
-  Provider, incluida recuperación tras interrupción y fail-closed hostil;
-- estados de proveedor con invariantes y disponibilidad separada de gate y
-  habilitación;
-- summaries/errores persistidos sanitizados en modo privado;
-- seis capturas reales preparadas como assets, sin alterar el README público.
+| Hito                                   | Estado    |
+| -------------------------------------- | --------- |
+| M0 — especificación y riesgos          | `DONE`    |
+| M1 — foundation segura                 | `DONE`    |
+| M2 — kernel de orquestación            | `DONE`    |
+| M3 — Runtime, aprobaciones y auditoría | `DONE`    |
+| M4 — workspace/capacidades reales      | `DONE`    |
+| M5 — primer conector estructurado      | `PARTIAL` |
+| M6 — workflows, agentes y memoria      | `DONE`    |
+| M7 — beta local/distribución Windows   | `PARTIAL` |
+| P0 — auditoría transversal v1          | `DONE`    |
+| P1 — hardening transversal             | `DONE`    |
+| P2 — product hardening/preparación M5  | `DONE`    |
+| M5-B0 — semántica de recovery          | `DONE`    |
+| P3-0 — documentación y ADRs            | `DONE`    |
+| P3-0.1 — revisión técnica de ADRs      | `DONE`    |
+| P3 — evolución arquitectónica          | `PLANNED` |
 
-P2 reduce riesgo de integración, pero no constituye un gate externo. El
-siguiente paso M5 sigue siendo obtener aprobación técnica/contractual/legal para
-una ruta oficial exacta y recién entonces implementar su adaptador contra esta
-suite. M5 y M7 permanecen `PARTIAL`.
+M5 y M7 son puertas independientes. P3 no autoriza a marcar ninguno de ellos
+como completo.
 
 ## M5-B0 — semántica de recovery
 
-Estado: `DONE` para el contrato interno, sin aprobar conectores externos.
+Estado: `DONE` para el contrato interno. M5 continúa `PARTIAL`.
 
-- ADR-0011 separa provider execution recovery de orchestration recovery;
-- manifests declaran primitives, no un booleano;
-- attempt journal y `remote_state_unknown` preservan incertidumbre, efectos,
-  budget y provenance;
-- no existe retry automático; resolution humana es explícita y auditada;
-- la suite conserva sus 14 checks y adapta recovery al nivel declarado;
-- Codex/Claude/Vertex continúan `UNRESOLVED`; Gemini API Interactions continúa
-  `CONDITIONALLY_APPROVED` solo como ruta futura con credencial/proyecto.
+ADR-0011 separa provider execution recovery de orchestration recovery. El modelo
+ya no exige exact recovery universal y representa incertidumbre distribuida de
+forma explícita.
 
-Siguiente paso mínimo: revisión M5-B1 del modelo de autenticación/custodia para
-la mejor ruta sin API key que ya tenga claridad contractual, sin construir un
-adapter hasta que todos sus gates obligatorios estén resueltos. M5 y M7
-permanecen `PARTIAL`.
+- primitives declarables: `local_checkpoint`, `stream_reconnect`,
+  `operation_query`, `operation_resume`, `idempotent_retry`, `remote_cancel`,
+  `exact_recovery`;
+- lista vacía válida y `recover` opcional;
+- attempt persistido antes del dispatch con digest, effect class, budget,
+  provenance y estado remoto;
+- pérdida de respuesta/stream/cancelación confirmable puede producir
+  `remote_state_unknown`;
+- UNKNOWN detiene dependencias incompatibles y no dispara retry automático;
+- resolución humana explícita y auditada;
+- checkpoints solo se consumen tras resultado terminal verificado;
+- exactamente 14 checks de conformance: exact recovery cuando se declara o
+  límite UNKNOWN seguro cuando no existe;
+- 149 tests y gates locales completos verificados;
+- CI Windows run `35608108255` en `success`;
+- commit de cierre: `ba69a26293aead9efaa2f06069a02e0be7d0f67c`.
 
-## Preparación de proveedores sin API keys (2026-09-14)
-
-Interfaz y preferencias locales terminadas y verificadas. Los cuatro candidatos
-se muestran bloqueados con estado separado de instalación, autenticación, gate y
-ejecución. Ollama local permite guardar únicamente loopback/modelo; todavía no
-se conecta ni se habilita. El siguiente trabajo de M5 sigue siendo gate oficial
-individual, autenticación autorizada, adaptador por ProviderHost y verificación
-E2E antes de ejecutar cualquier proveedor. Las APIs con key y facturación
-independiente se mantienen como extensión futura fuera del flujo principal.
-
-M5 y M7 continúan `PARTIAL`; el rediseño no cambia esos hitos.
-
-## P1 transversal hacia v1.0 (sin nuevas funciones grandes)
-
-Estado: `DONE` para estos controles tras los gates locales y la
-[CI Windows 34903034199](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34903034199).
-
-Historial y auditoría por workspace, recuperación visible desde el arranque,
-privacidad local con memoria privada temporal, retención/borrado/exportación,
-descripción precisa del journal, versión única y licencia/notices del proyecto
-se implementan como controles de la versión actual. La cadena append-only,
-backups, cuarentenas y exportaciones anteriores no se borran automáticamente. La
-revisión completa de notices de dependencias empaquetadas y los gates de
-distribución siguen en M7 `PARTIAL`; ningún proveedor externo se habilita.
-
-## P0 transversal hacia v1.0 (sin avance de M7)
-
-Estado: `DONE` para P0 tras los gates frescos y el run Windows
-[34871238822](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34871238822).
-En código local están implementados, en el orden acordado: recuperación de gates
-y diagnóstico Electron/Runtime, rutas por objetivo en Strategy, `AdapterHost`
-único, Evaluation preflight/postflight, provider IDs extensibles y UI objetivo
-primero con historial/recuperación/ privacidad. Git se inicializó y la CI
-Windows quedó definida. El Reference Provider sigue siendo la única
-implementación ejecutable. Los gates remotos, la distribución M7 y el gate
-externo M5 son puertas distintas.
-
-## M0 — especificación y riesgos
-
-Estado: `DONE`
-
-- propósito, PRD, arquitectura, ADR, threat model, privacidad y UI coherentes;
-- límites de proveedores y preguntas bloqueantes visibles.
-
-## M1 — foundation segura
-
-Estado: `DONE`
-
-- monorepo reproducible y shell Electron aislado;
-- contratos IPC, diagnóstico local y Policy Engine puro;
-- pruebas unitarias, build y smoke.
-
-## M2 — kernel de orquestación
-
-Estado: `DONE`
-
-- Strategy Engine, Execution Planner, Capability Registry y Evaluation Engine;
-- contratos versionados y preview inerte desde UI;
-- detección de dependencias faltantes/cíclicas y decisiones de policy por paso;
-- pruebas unitarias y de integración sin Runtime ni proveedor.
-
-Puerta de salida: una intención de diagnóstico produce una estrategia, un plan
-de dos pasos y una evaluación explicable; no causa efectos y no rompe los IPC de
-M1. Verificado mediante E2E sobre el build de Electron.
-
-## M3 — Runtime, aprobaciones y auditoría
-
-Estado: `DONE`; integridad, persistencia, aprobaciones de un uso, Runtime,
-evidencia, timeout, cancelación y recuperación de orphan verificados. El árbol
-de procesos Windows se probó con padre y descendiente reales.
-
-- persistencia/hash de plan y snapshot del Registry;
-- supervisor de procesos con cancelación de árbol verificada;
-- aprobaciones ligadas a paso/plan y revalidación antes de efectos;
-- evidencia de ejecución y auditoría correlacionada de extremo a extremo.
-
-## M4 — workspace y primeras capacidades reales
-
-Estado: `DONE`; backend, integración de escritorio y gate automatizado de la
-prioridad 6 verificados.
-
-- `DONE`: workspace canónico, identidad revalidada, límites, exclusiones y
-  junctions/symlinks;
-- `DONE`: lectura, búsqueda literal y Git status/diff de solo lectura;
-- `DONE`: adapters publican capacidades y una fixture completa intención → plan
-  firmado → Runtime → evidencia;
-- `DONE`: selección nativa, preview persistido, ejecución/cancelación por
-  referencias opacas, resultados y evidencia visibles en la app;
-- `DONE`: axe, recorrido de teclado y reflow al 200 % del flujo crítico. La
-  prueba humana con Narrator se conserva como gate previo a beta.
-
-Watch seguro, snapshots y escritura atómica no forman parte del gate read-only
-de M4; se difieren al hardening de M7 y requieren contratos/ADR propios.
+La falta de exact recovery deja de ser bloqueo técnico universal. Permanecen
+intactos los gates de autenticación, contrato, distribución, billing, custodia y
+evidencia real de cada capability.
 
 ## M5 — primer conector estructurado
 
-Estado: `PARTIAL`; expediente técnico/contractual/legal, infraestructura
-provider-agnostic y Reference Provider local verificados. La activación de cada
-proveedor externo continúa `BLOCKED` hasta su dictamen humano y confirmaciones
-aplicables, sin bloquear M6 o M7.
+Estado: `PARTIAL`.
 
-- `DONE`: metodología, comparación oficial y matriz por ruta/autenticación;
-- `DONE`: publicación fail-closed ligada a observación, attestation, fixtures,
-  tres revisiones, trust store, preferencia y modo privado;
-- `DONE`: contrato ejecutable de Provider Adapter, dispatcher genérico,
-  transporte local streaming, cancelación, budgets, approvals, preview de
-  contexto, provenance, errores y recuperación persistente;
-- `DONE`: Reference Provider local probado desde Orchestration Engine hasta
-  Runtime, persistencia, evidencia y UI, sin red ni credenciales;
-- `PENDING`: gate legal y contractual aprobado para cuentas/caso de uso exactos;
-- `PENDING`: un adaptador oficial con fixtures por versión, parser del protocolo
-  aprobado y destino de red exacto.
+La infraestructura provider-agnostic, `AdapterHost`, Reference Provider,
+conformance, gates y semántica de recovery existen. Reference Provider sigue
+siendo el único ejecutable.
 
-Codex App Server y Claude Code oficial son candidatos no habilitados con gates
-`UNRESOLVED`; todavía no existe un primer proveedor externo elegido. Claude
-Platform mediante `ant` y Gemini sobre Vertex AI conservan rutas alternativas.
-Gemini CLI OAuth y Agent SDK con login Claude.ai propio están rechazados.
+Antes de construir un adapter externo:
 
-### M5-A — resultado del gate Codex App Server (2026-09-15)
+1. la ruta exacta debe estar identificada;
+2. autenticación/custodia debe ser oficial y compatible con las reglas del
+   producto;
+3. contrato/términos aplicables deben ser suficientemente claros;
+4. distribución y billing deben estar entendidos;
+5. capabilities declaradas deben tener evidencia real;
+6. debe existir threat model de la ruta;
+7. el trust store solo puede ampliarse mediante el gate establecido.
 
-`UNRESOLVED`. OpenAI documenta App Server para embedding técnico en productos,
-pero califica el comando como experimental/no soportado para producción y falta
-confirmación explícita para el uso de terceros con Plus/Pro frente a los Terms
-of Use. También falta una primitive idempotente compatible con las pruebas
-`recovery` e `interrupted_recovery`.
+### M5-A — Codex
 
-Siguiente paso mínimo: enviar las preguntas de
-`docs/providers/codex-app-server-open-questions.md` a OpenAI. Solo después de
-una respuesta citable se fija una versión/schema, se diseña recovery y se
-autoriza un spike aislado. Codex continúa deshabilitado y M5 sigue `PARTIAL`.
+Estado: `UNRESOLVED`.
 
-### M5-A2 — resultado del gate Claude/Anthropic (2026-09-15)
+La ausencia de exact recovery ya no bloquea universalmente la integración.
+Continúan pendientes madurez/soporte de producción, autenticación exacta,
+autorización contractual de terceros, distribución y evidencia de capabilities.
+Hasta nueva evidencia se declaran cero recovery capabilities externas.
 
-`UNRESOLVED`. Anthropic permite ejecutar Claude Code oficial e inalterado en
-productos y documenta `claude -p` para automatización estructurada. El usuario
-autentica su cuenta dentro del cliente oficial; Trivergence no ofrece OAuth ni
-lee credenciales. Pro, Max, Team y Enterprise pueden usar hoy límites de
-suscripción; Free no incluye Claude Code. `ant` + Console OAuth es la
-alternativa con billing API separado.
+### M5-A2 — Claude
 
-No se autoriza un spike: recovery del mismo turn continúa bloqueado y debe
-confirmarse que el uso exacto como provider entra en el permiso de ejecutar
-Claude Code sin convertirse en un login/rate-limit propio del Agent SDK.
-Siguiente paso mínimo: enviar `docs/providers/claude-open-questions.md` a
-Anthropic. Claude continúa deshabilitado, el Reference Provider sigue siendo el
-único ejecutable y M5 permanece `PARTIAL`.
+Estado: `UNRESOLVED`.
 
-### M5-A3 — resultado del gate Google/Gemini (2026-09-15)
+La reanudación de sesión no se considera por sí sola recuperación del mismo
+turn. La ruta puede fallar seguro mediante UNKNOWN, pero autenticación,
+clasificación contractual del uso exacto, distribución y evidencia real siguen
+pendientes.
 
-`UNRESOLVED`. Gemini CLI con OAuth de consumidor y Gemini Code Assist quedan
-`REJECTED` como provider routes. Gemini Developer API Interactions queda
-`CONDITIONALLY_APPROVED` solo como alternativa futura con key/auth key y billing
-propios; no forma parte del flujo principal sin keys.
+### M5-A3 — Google/Gemini
 
-Vertex AI + ADC/OAuth/IAM sobre el proyecto Cloud del usuario es la mejor ruta
-Google sin API key. No se autoriza un spike porque la inferencia online no
-documenta exact recovery y no se confirmó Interactions background/reconnect bajo
-Vertex/ADC; también falta el ADR de custodia/aislamiento ADC y revisión BYO
-project. Siguiente paso mínimo: enviar
-`docs/providers/google-gemini-open-questions.md` y exigir respuestas citables.
-Gemini continúa deshabilitado, Reference Provider sigue siendo el único
-ejecutable y M5/M7 permanecen `PARTIAL`.
+Estado global: `UNRESOLVED`.
 
-## M6 — workflows, agentes y memoria
+Las rutas de consumidor no autorizadas permanecen rechazadas. La API de
+Interactions continúa `CONDITIONALLY_APPROVED` únicamente como alternativa
+futura con credencial/proyecto/billing propios; mantiene como candidatas,
+sujetas a adapter y pruebas reales, `operation_query`, `stream_reconnect`,
+`remote_cancel` y exact recovery para ejecución background cuando la
+documentación/ruta exacta lo sustente.
 
-Estado: `DONE`; verificado el 2026-09-10 con capacidades locales y el Reference
-Provider. Ningún workflow convierte esa base de prueba en autorización para un
-proveedor externo.
+Vertex AI con autenticación oficial de Cloud puede operar bajo el límite UNKNOWN
+sin exigir exact recovery, pero custodia, identidad/proyecto, billing, contrato
+y evidencia de capabilities siguen `UNRESOLVED`.
 
-- `DONE`: workflow declarativo `workflow.local.team-memory-evaluation@1.0.0`
-  expandido en cinco capabilities por el Planner existente;
-- `DONE`: agentes planner/critic/synthesizer sin autoridad de policy/tools y
-  restringidos al Reference Provider local;
-- `DONE`: memoria por workspace con budgets, provenance, TTL, borrado y poda;
-- `DONE`: una reparación máxima con llamadas, bytes, coste y tiempo compartidos;
-- `DONE`: checks de integridad/provenance, cinco evidencias y auditoría sin
-  objetivo/output;
-- `DONE`: contratos, ADR-0009 y threat model M6;
-- `DONE`: lint, typecheck, 105 tests, build y Electron E2E.
+### M5-B1 — autenticación y custodia de la primera ruta elegible
 
-Puerta de salida: una intención real llega a Strategy/Orchestration Engine,
-equipo, workflow, memoria, evaluación y resultado auditable; tampering,
-overbudget y provider externo fallan cerrado. Verificado sin modificar los
-cuatro motores del núcleo.
+Estado: `BLOCKED` por evidencia externa.
 
-## M7 — beta local
+Solo comienza cuando una ruta tenga claridad suficiente en contrato y
+autenticación. Alcance:
 
-Estado: `PARTIAL`; hardening y preparación Windows implementados y verificados
-localmente el 2026-09-11. M7 no se marca `DONE` porque la evidencia de
-distribución todavía es incompleta.
+- ADR de identidad/autenticación/custodia;
+- frontera exacta entre Trivergence y software/servicio oficial;
+- instalación, login, revocación y logout;
+- binding cuenta/proyecto/organización;
+- amenazas de sustitución de identidad y confused deputy;
+- billing y límites visibles;
+- almacenamiento permitido/prohibido;
+- comportamiento offline/expired/revoked;
+- fixtures y aceptación.
 
-- `DONE`: watch seguro con debounce, exclusiones, cola acotada y `overflow`;
-- `DONE`: snapshots SHA-256, escritura atómica, journal, recuperación
-  fail-closed y rollback sin sobrescribir cambios inesperados;
-- `DONE`: cuarentena de SQLite ilegible, backup validado y activación atómica
-  con base desplazada preservada;
-- `DONE`: Electron fuses, ASAR íntegro, NSIS x64, ciclo local
-  install/start/uninstall, SBOM CycloneDX 1.7 y manifest SHA-256;
-- `DONE`: verificador de update Ed25519/HTTPS/allowlist/anti-downgrade,
-  mantenido explícitamente deshabilitado;
-- `DONE`: 115 tests, lint, typecheck, build, Electron E2E/smoke y auditoría con
-  cero vulnerabilidades conocidas;
-- `PARTIAL`: el payload `app.asar` es byte-reproducible; el gate detecta hashes
-  distintos del instalador NSIS entre dos builds;
-- `PENDING`: Authenticode válido, identidad editorial y custodia de claves;
-- `PENDING`: clean install/upgrade/rollback/uninstall independientes en Windows
-  10 y 11, más segunda máquina/runner de build;
-- `PARTIAL`: licencia Apache-2.0 y notices del repositorio presentes; falta
-  revisión de obligaciones de dependencias empaquetadas.
-- `PENDING`: canal autenticado de update aprobado.
+**No construir ni habilitar el adapter en M5-B1.**
 
-El instalador actual se llama deliberadamente `UNSIGNED` y no es distribuible.
-Codex, Claude y Gemini siguen bloqueados; M5 permanece `PARTIAL`.
+### M5-B2 — spike aislado del primer adapter
 
-## Extensiones posteriores
+Estado: `PLANNED`, dependiente de M5-B1 y gates obligatorios.
 
-Conversaciones, FTS5, notas/tareas, exportación avanzada, vistas auxiliares,
-MCP, segundo conector, revisión cruzada, WSL2/Docker, documentos y embeddings se
-entregan después de M7 como subsistemas independientes. Paralelismo, consejo,
-torneo y marketplace requieren ADR, budgets y threat model propios.
+Debe ser mínimo, version-pinned, sin lógica de marca en Orchestration Engine,
+contra la suite de conformance y con trust store fail-closed. Solo una ruta.
 
-## Fuera del compromiso actual
+### M5-B3 — integración E2E y habilitación controlada
 
-- fecha pública y auto-update habilitado antes de completar sus gates;
-- paridad con IDEs o asistentes existentes;
+Estado: `PLANNED`.
+
+Requiere adapter aprobado, fixtures reales, policy/approval, budgets, recovery
+honesto, provenance, privacidad, UI de estados y E2E. Recién aquí puede existir
+un primer provider externo ejecutable.
+
+## M7 — beta local Windows
+
+Estado: `PARTIAL`.
+
+Mantener como puertas pendientes:
+
+- reproducibilidad del instalador NSIS;
+- Authenticode, identidad editorial y custodia de claves;
+- matriz limpia Windows 10/11 para install/upgrade/rollback/uninstall;
+- segundo host/runner de build;
+- revisión completa de obligaciones de dependencias empaquetadas;
+- canal autenticado de update antes de habilitarlo;
+- validación humana de accesibilidad pendiente.
+
+P3 no reduce estas exigencias.
+
+# P3 — evolución arquitectónica
+
+Estado funcional: `PLANNED`. P3-0 documental está `DONE`; no implementa ninguna
+capacidad P3.
+
+P3 convierte capacidades ya separadas en contexto, gateways, durabilidad y
+proyecciones reutilizables. No es un “big bang”. Cada subfase requiere orden
+explícita, threat model, budgets, tests y puerta de salida propia; cerrarla no
+autoriza automáticamente la siguiente.
+
+## P3-0 — documentación y ADRs
+
+Estado: `DONE` documental, 2026-09-22.
+
+- arquitectura `CURRENT/CORE` separada de `NEXT/PLANNED`;
+- ownership normativo sin fuentes de verdad duplicadas;
+- ADRs preparados para recovery envelope, conformance integrada, clasificación
+  conservadora de efectos y workflow snapshots;
+- dossiers alineados con ADR-0011 sin alterar gates externos;
+- orden P3 basado en dependencias durables.
+
+P3-0 registra deuda técnica, pero no modifica código ni habilita providers.
+
+## P3-0.1 — revisión técnica y aceptación de ADRs
+
+Estado: `DONE` documental, 2026-09-22. Implementaciones: `PENDING`.
+
+- ADR-0012 acepta un envelope con compartimentos independientes para identidad
+  remota, continuación e idempotencia;
+- ADR-0013 mantiene los 14 checks y exige que `interrupted_recovery` se acredite
+  mediante un harness de Adapter + AdapterHost + Runtime + persistence;
+- ADR-0014 separa severidad de efecto de garantía de compensación y asigna la
+  evaluación efectiva versionada al Planner;
+- ADR-0015 define un snapshot como manifest inmutable de referencias/digests de
+  estado confirmado, nunca como provider checkpoint o copia de otras fuentes de
+  verdad.
+
+Las cuatro decisiones están `ACCEPTED`, pero ninguna está implementada. Siguen
+pendientes los cambios de contratos, migraciones, harness y durable state. M5 y
+M7 permanecen `PARTIAL`; Reference Provider continúa como único ejecutable.
+
+## P3-A1 — Project Context mínimo
+
+Estado: `PLANNED`. Dependencia documental: P3-0.1 completado.
+
+Objetivo: snapshot operacional versionado por workspace que reúna objetivo,
+restricciones, policy, capabilities, budgets y referencias autorizadas a Memory,
+Audit/Evidence y recursos. No es un índice inteligente ni una nueva base de
+verdad.
+
+Puerta de salida futura: contrato versionado, límites/retención/private mode,
+provenance de cada referencia, invalidación determinista y consumo por Strategy
+sin saltarse budgets.
+
+## P3-D0 — contrato de Execution Gateway
+
+Estado: `PLANNED`. Dependencias: P3-A1 y ADRs de effect/recovery aceptados pero
+todavía no implementados.
+
+Objetivo: definir una interfaz uniforme sobre ProcessSupervisor y ejecución
+supervisada existente, con filesystem, red, procesos, recursos, cancelación,
+cleanup y evidence declarados. No elige una tecnología de sandbox ni implementa
+un backend nuevo.
+
+Puerta de salida futura: ownership y lifecycle únicos que Tool Gateway pueda
+reutilizar sin crear otro supervisor.
+
+## P3-E1 — Durable Workflow State
+
+Estado: `PLANNED`. Dependencias: P3-A1, ADR-0011, ADR-0015 y persistence/Runtime
+actuales.
+
+Objetivo: estado durable para pause/resume, aprobación/input/evento, restart,
+deadlines, budgets/provenance y `remote_state_unknown`. Debe distinguir futuros
+`WorkflowExecutionSnapshot` de `ProviderRecoveryCheckpoint`.
+
+Puerta de salida futura: crash inyectado en cada frontera conserva estado y
+nunca duplica efectos ni ejecuta retry inseguro.
+
+## P3-B1 — Agent Profiles declarativos
+
+Estado: `PLANNED`. Dependencias: P3-A1 y modelo durable de identidad/estado de
+P3-E1.
+
+Objetivo: perfiles por capabilities, permisos, budgets, contexto, termination y
+evidence. Los roles M6 fijos continúan siendo implementación actual hasta que
+esta fase tenga evidencia.
+
+Puerta de salida futura: un perfil no amplía autoridad y su selección es
+explicable, versionada y auditable.
+
+## P3-B2 — fan-out/fan-in acotado
+
+Estado: `PLANNED`. Dependencias: P3-B1 y P3-E1 completos.
+
+Objetivo: subtareas independientes, concurrencia limitada, cancelación por rama,
+budget agregado, provenance, evaluación/síntesis y degradación secuencial.
+
+Puerta de salida futura: ninguna rama pierde estado durable, amplía autoridad,
+duplica efectos o excede budget agregado.
+
+## P3-C — Tool Gateway MCP
+
+Estado: `PLANNED`. Dependencias: P3-D0, Registry/Policy/Approval estables y
+estado durable aplicable.
+
+Objetivo: adaptar tools/resources/prompts MCP a capabilities mediante discovery,
+schemas, allowlists, permissions, provenance, network policy y UI de destino.
+MCP reutiliza Execution Gateway; nunca implementa supervisor independiente.
+
+Puerta de salida futura: un servidor no confiable no escapa de policy, accede a
+recursos excluidos ni ejecuta una capability no aprobada.
+
+## P3-A2 — Project Intelligence
+
+Estado: `PLANNED`. Dependencia: P3-A1.
+
+Objetivo: índice derivado/reconstruible, búsqueda con citas, context packs y
+detector de drift con revisión humana. No autoedita documentos gobernantes, no
+convierte outputs en hechos y no exige embeddings ni knowledge graph.
+
+Puerta de salida futura: fuentes exactas, exclusiones/private mode, invalidación
+y pruebas de poisoning verificadas.
+
+## P3-F1 — Trivergence Trace
+
+Estado: `PLANNED`. Dependencias: IDs y transiciones estables de P3-E1 y las
+fuentes actuales de Audit/Evidence/provenance.
+
+Objetivo: proyección correlacionada
+objetivo→estrategia→plan→ejecución→evaluación →resultado. Trace no es una nueva
+fuente de verdad.
+
+## P3-F2 — exporter OpenTelemetry
+
+Estado: `PLANNED`. Dependencia: P3-F1.
+
+Objetivo: exportación opt-in y sanitizada de la proyección Trace. OpenTelemetry
+no reemplaza persistence, audit chain ni evidence.
+
+## Capacidades posteriores exclusivamente experimentales
+
+Estado común: `LATER/EXPERIMENTAL`; ninguna está autorizada.
+
+- Agent Gateway A2A;
+- browser/web automation graduada por riesgo;
+- knowledge graph relacional/temporal y embeddings opcionales;
+- workflow branching desde un `WorkflowExecutionSnapshot` confirmado e
+  inmutable, nunca desde `ProviderRecoveryCheckpoint`;
+- capacidades avanzadas de memoria para hechos/decisiones/eventos.
+
+Cada candidata requiere ADR, threat model, budgets, privacidad, evidencia de
+necesidad y una orden explícita antes de implementar.
+
+## Capacidades deliberadamente diferidas
+
+No forman parte del compromiso P3 inicial:
+
+- marketplace público de extensiones;
+- instalación automática de código no auditado;
+- torneo/consejo de proveedores por defecto;
+- autonomía destructiva;
+- editor/IDE completo;
 - modelo de IA propio;
-- automatización de Claude por credenciales de suscripción;
-- soporte macOS/Linux.
+- soporte macOS/Linux;
+- cualquier integración que dependa de extraer credenciales privadas.
+
+## Regla de secuenciación
+
+Orden normativo:
+
+`P3-0 → P3-A1 → P3-D0 → P3-E1 → P3-B1 → P3-B2 → P3-C → P3-A2 → P3-F1 → P3-F2`.
+
+M5 y M7 continúan como puertas independientes y no cambian por P3. Las
+capacidades experimentales quedan después de P3-F2 y no entran al roadmap de
+implementación sin una decisión posterior. No se combinan subfases en una misma
+orden salvo modificación explícita y justificada de este Roadmap.

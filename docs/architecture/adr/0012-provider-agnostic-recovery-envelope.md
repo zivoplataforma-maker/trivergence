@@ -1,7 +1,8 @@
 # ADR-0012: envelope provider-agnostic de recovery
 
-Estado: `PROPOSED` — decisión documental; implementación diferida  
-Fecha: 2026-09-22
+Estado: `ACCEPTED` — decisión arquitectónica; implementación pendiente  
+Fecha: 2026-09-22  
+Aceptado: 2026-09-22
 
 ## Contexto
 
@@ -11,64 +12,102 @@ propia del Reference Provider: `nextChunkIndex`, `emittedBytes` y
 `recoveryCursor`. Esa forma no representa de manera neutral operation IDs,
 reconnect cursors, resume tokens o claves de idempotencia.
 
-No se modifica el contrato ejecutable en P3-0. Este ADR define la forma objetivo
-que deberá aprobarse antes de una migración.
+El envelope no puede confundir identidad remota, material de continuación y
+garantías de idempotencia. Esos tres conceptos pueden coexistir y tienen
+autoridades distintas; por eso no se modelan como variantes mutuamente
+excluyentes de una única unión.
 
-## Decisión propuesta
+## Decisión
 
-Un futuro envelope de recovery debe ser versionado, discriminado, ligado a la
-identidad de request/adapter/provider y validado antes de persistirse o usarse.
-Debe poder representar como variantes independientes:
+La evolución de `ProviderRecoveryCheckpoint` será un envelope versionado con
+tres compartimentos independientes y tipados:
 
-- **local stream cursor:** posición, bytes emitidos y cursor del mismo stream
-  local;
-- **operation identifier:** identidad remota consultable de una operación;
-- **reconnect cursor:** posición verificable dentro del stream de esa operación;
-- **resume token:** autorización opaca para continuar la misma operación;
-- **idempotency identifier:** clave y alcance de deduplicación documentado;
-- **provider-specific opaque state:** payload opaco, acotado y validado por un
-  schema versionado del adapter, nunca JSON arbitrario sin límites.
+1. **Remote operation identity:** provider, adapter, operation ID cuando exista,
+   request digest y ámbito de cuenta/proyecto que pueda expresarse sin secretos.
+2. **Continuation material:** una variante discriminada para cursor de stream
+   local, reconnect cursor, resume token u otra continuación soportada.
+3. **Idempotency material:** identificador, scope, garantía declarada, emisor y
+   expiración cuando corresponda.
 
-El envelope común debe incluir, como mínimo:
+Un envelope puede contener identidad sin continuación, continuación ligada a una
+identidad o idempotencia sin cursor. La presencia de un compartimento no infiere
+los restantes.
 
-- versión de schema y tag de variante;
-- adapter/provider/capability y versión/digest del adapter;
+El envelope común incluirá como mínimo:
+
+- versión de schema y versión de canonicalización;
+- adapter/provider identity, versión y build digest del adapter;
 - request y context digests;
-- operation identity cuando exista;
-- instante de observación y estado remoto observado;
-- digest del propio envelope;
-- límites de tamaño y política de redacción/retención.
+- instante de emisión/observación y expiración aplicable;
+- referencia al attempt, provenance y ledger de budget autoritativos;
+- estado remoto observado, etiquetado como observación y nunca como autoridad;
+- política de retención/redacción y límite máximo de bytes;
+- algoritmo y digest canónico de todo el envelope excepto el propio campo de
+  digest.
 
-`nextChunkIndex`, `emittedBytes` y `recoveryCursor` quedan reconocidos como la
-**variante local stream cursor existente**, no como semántica universal.
+`nextChunkIndex`, `emittedBytes` y `recoveryCursor` forman la variante existente
+**local stream cursor**. Esa variante tiene scope local y no adquiere identidad
+remota por migración.
+
+## Estado opaco específico del provider
+
+El estado opaco es una extensión de continuación, no una bolsa genérica. Debe
+tener namespace del adapter, schema ID, schema version, límite de bytes,
+expiración y digest. El adapter que lo emitió debe validarlo antes de
+persistirlo y antes de usarlo. El host falla cerrado ante schema desconocido,
+adapter/build incompatible, tamaño excesivo, expiración o digest inválido.
+
+Nunca puede contener contraseña, cookie, access/refresh token, API key o
+credential-store exportado. Un resume token oficialmente emitido se representa
+como material sensible tipado, cifrado mediante la política de secretos aprobada
+y con retención mínima; no se degrada a JSON opaco.
 
 ## Invariantes
 
-1. Un envelope no demuestra por sí solo que el estado remoto sea terminal.
-2. Un token/cursor solo se usa con el mismo request digest, adapter identity y
-   capability para los que fue emitido.
-3. Estado opaco no concede autoridad ni habilita retry automático.
-4. Payload desconocido, sobredimensionado, expirado o con schema no confiable
-   falla cerrado.
-5. Persistir una clave de idempotencia no convierte una operación en
-   idempotente; la garantía debe estar declarada y probada.
-6. Migrar checkpoints históricos no puede elevar sus capabilities.
+1. Un envelope es material correlacionado, no una capability, autorización,
+   approval, evidencia terminal ni permiso de retry.
+2. `remote_state_unknown` no se resuelve por la mera presencia de un envelope.
+3. Un cursor/token solo se usa con el mismo request digest, adapter identity,
+   ámbito y capability para los que fue emitido.
+4. Una clave persistida no demuestra idempotencia; la garantía debe estar
+   declarada, vigente y probada para ese scope.
+5. El envelope referencia budget/provenance autoritativos; no crea saldo nuevo,
+   no reinicia consumo y no duplica sus registros.
+6. Private mode puede impedir su persistencia. En ese caso se renuncia a la
+   recuperación durable que dependa de ese material.
+7. Retener el envelope nunca amplía la retención de prompt, contexto, Memory,
+   Evidence o Audit.
+8. Migrar checkpoints históricos no eleva capabilities ni prueba identidad
+   remota.
 
 ## Compatibilidad y migración futura
 
-La implementación futura debe introducir una nueva versión, leer la variante
-local histórica de forma explícita y mantenerla limitada al Reference Provider
-hasta probar otra equivalencia. No debe reinterpretar registros anteriores como
-operation IDs ni exact recovery.
+La implementación futura introducirá una versión nueva y un reader explícito
+para la variante local histórica. El registro anterior solo podrá migrar a
+`continuation.local_stream_cursor`, ligado al Reference Provider y a su request
+digest. No se reinterpretará como operation ID, token remoto, idempotency key o
+exact recovery.
 
-## Consecuencias
+La migración debe ser monotónica, auditable y conservar el checkpoint original
+hasta validar el nuevo digest. Un registro que no pueda validarse queda
+inutilizable para recovery; nunca se rellena por inferencia.
 
-El modelo podrá expresar providers heterogéneos sin diseñarse alrededor del
-Reference Provider. A cambio, aumentan schemas, migraciones, fixtures y reglas
-de retención. Ninguna consecuencia autoriza un provider externo ni modifica hoy
-`ProviderAdapter`, `AdapterHost`, Runtime o persistence.
+## Relación con otras decisiones
 
-## Deuda técnica registrada
+- [ADR-0011](0011-recovery-semantics.md) define capabilities, operaciones y el
+  tratamiento de incertidumbre.
+- [ADR-0013](0013-integrated-interrupted-recovery-conformance.md) define cómo el
+  sistema demostrará que consume el envelope de forma segura.
+- [ADR-0015](0015-workflow-execution-snapshots.md) prohíbe tratar este envelope
+  como estado confirmado de workflow.
 
-El tipo ejecutable actual sigue acoplado al cursor local. Resolverlo requiere
-código, migración y tests en una fase posterior aprobada.
+## Consecuencias y deuda
+
+El modelo expresa providers heterogéneos sin diseñarse alrededor del Reference
+Provider y mantiene separadas identidad, continuación e idempotencia. A cambio,
+requiere schemas, migraciones, política de secretos, fixtures, límites y pruebas
+de retención/private mode.
+
+El tipo ejecutable actual continúa acoplado al cursor local. Esta aceptación no
+modifica `ProviderAdapter`, `AdapterHost`, Runtime o persistence, no habilita
+providers y no convierte la decisión en capacidad implementada.

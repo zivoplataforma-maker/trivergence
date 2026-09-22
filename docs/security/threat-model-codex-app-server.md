@@ -74,6 +74,7 @@ schema, transporte WebSocket ni API key.
 
 Aunque el proceso sea oficial, corre con identidad del usuario y puede acceder a
 recursos que su sandbox/configuración permita. El aislamiento text-only debe
-probarse, no inferirse. La ausencia de recovery idempotente y la autorización
-contractual para Plus/Pro mantienen este threat model en estado previo y
-prohíben habilitar el adapter.
+probarse, no inferirse. La ausencia de recovery idempotente obliga a declarar
+capabilities vacías y demostrar el límite `remote_state_unknown`; no es un
+bloqueo universal. La autorización contractual para Plus/Pro y la madurez de
+producción continúan prohibiendo habilitar el adapter.

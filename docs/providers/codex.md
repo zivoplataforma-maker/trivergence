@@ -1,6 +1,6 @@
 # Gate de proveedor — Codex/OpenAI
 
-Estado: `UNRESOLVED`; candidato preferido, no habilitado  
+Estado: `UNRESOLVED`; sin ganador ni habilitación  
 Verificado contra fuentes oficiales: 2026-09-15  
 M5: `PARTIAL`
 
@@ -14,9 +14,11 @@ para producción.
 No confirmó de forma inequívoca que una aplicación open-source de terceros pueda
 usar esa interfaz con cuentas personales Plus/Pro. La invitación técnica a
 embedding convive con una restricción de extracción programática en los Terms of
-Use, sin una aclaración oficial que delimite este caso. Además, App Server no
-documenta reanudación idempotente de un turn desde un checkpoint compatible con
-las dos pruebas de recovery de Trivergence.
+Use, sin una aclaración oficial que delimite este caso. App Server tampoco
+documenta reanudación idempotente del mismo turn; bajo ADR-0011 declararía
+recovery vacío y una interrupción debería terminar en `remote_state_unknown`,
+sin retry automático. Esa ausencia no es requisito técnico universal ni cambia
+los gates externos.
 
 Por ello:
 

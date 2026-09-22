@@ -198,7 +198,7 @@ terceros. No es una salida para Trivergence y no se incluye como candidato.
 
 | Gate               | Gemini CLI                                    | Code Assist                                 | Gemini API                                 | Vertex AI                                                    |
 | ------------------ | --------------------------------------------- | ------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------ |
-| Technical          | `ADAPTABLE` en headless; recovery bloqueado   | `BLOCKED`: no API de provider               | `SUPPORTED`: Interactions GA y structured  | `SUPPORTED` salvo recovery online                            |
+| Technical          | `ADAPTABLE` en headless; recovery vacío       | `BLOCKED`: no API de provider               | `SUPPORTED`: Interactions GA y structured  | `SUPPORTED`; recovery online no demostrado                   |
 | Security           | `BLOCKED`: frontera OAuth/CLI no autorizada   | `BLOCKED`: superficie IDE y permisos ajenos | `ADAPTABLE`: key vault, retención y egress | `ADAPTABLE`: ADC/IAM, account binding y proceso aislado      |
 | Authentication     | `REJECTED` para piggyback/login consumidor    | `REJECTED` como auth transferible           | `SUPPORTED` solo key/auth key              | `SUPPORTED` mediante ADC/OAuth/IAM                           |
 | Contractual        | `REJECTED` para backend tercero con OAuth CLI | `REJECTED` como interfaz/redistribución     | `SUPPORTED` para apps sujetas a API Terms  | `SUPPORTED` para Customer Applications sujetas a Cloud Terms |
@@ -230,35 +230,37 @@ terceros. No es una salida para Trivergence y no se incluye como candidato.
 | `typed errors`   | `ADAPTABLE`: HTTP/RPC/status normalizado                             | `ADAPTABLE`: Google RPC/HTTP normalizado                          |
 | `provenance`     | `ADAPTABLE`: interaction ID, model, usage, revision                  | `ADAPTABLE`: response ID, model, project, region, SDK             |
 
-Gemini CLI es técnicamente `ADAPTABLE` en execute/stream/cancel y `BLOCKED` en
-auth, contractual y exact recovery. Code Assist carece de interfaz: sus campos
-son `BLOCKED` o `UNKNOWN`. No se justifica diseñar un adapter para ninguno.
+Gemini CLI es técnicamente `ADAPTABLE` en execute/stream/cancel, pero está
+`REJECTED` por autenticación y contrato. La falta de exact recovery se declara
+como capability ausente, no como gate adicional. Code Assist carece de interfaz:
+sus campos son `BLOCKED` o `UNKNOWN`. No se justifica diseñar un adapter para
+ninguno.
 
 ## 4. Evaluación contra las 14 comprobaciones
 
 No hay `PASS` real: no se implementó ni ejecutó ningún provider.
 
-| Comprobación              | Gemini CLI  | Code Assist | Gemini API / Interactions  | Vertex AI        |
-| ------------------------- | ----------- | ----------- | -------------------------- | ---------------- |
-| `capability_declaration`  | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`      |
-| `prepare_context_preview` | `ADAPTABLE` | `BLOCKED`   | `ADAPTABLE`                | `ADAPTABLE`      |
-| `execute_and_stream`      | `PASSABLE`  | `BLOCKED`   | `PASSABLE`                 | `PASSABLE`       |
-| `cancellation`            | `ADAPTABLE` | `UNKNOWN`   | `PASSABLE`                 | `ADAPTABLE`      |
-| `recovery`                | `BLOCKED`   | `UNKNOWN`   | `PASSABLE` en background   | `BLOCKED` online |
-| `interrupted_recovery`    | `BLOCKED`   | `UNKNOWN`   | `PASSABLE` con ID/event ID | `BLOCKED` online |
-| `timeout`                 | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`      |
-| `typed_failure`           | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`      |
-| `input_budget`            | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`      |
-| `output_budget`           | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`      |
-| `provenance`              | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`      |
-| `approval_boundary`       | `ADAPTABLE` | `BLOCKED`   | `ADAPTABLE`                | `ADAPTABLE`      |
-| `malformed_response`      | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`      |
-| `unavailable_provider`    | `ADAPTABLE` | `ADAPTABLE` | `ADAPTABLE`                | `ADAPTABLE`      |
+| Comprobación              | Gemini CLI  | Code Assist | Gemini API / Interactions  | Vertex AI                      |
+| ------------------------- | ----------- | ----------- | -------------------------- | ------------------------------ |
+| `capability_declaration`  | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`                    |
+| `prepare_context_preview` | `ADAPTABLE` | `BLOCKED`   | `ADAPTABLE`                | `ADAPTABLE`                    |
+| `execute_and_stream`      | `PASSABLE`  | `BLOCKED`   | `PASSABLE`                 | `PASSABLE`                     |
+| `cancellation`            | `ADAPTABLE` | `UNKNOWN`   | `PASSABLE`                 | `ADAPTABLE`                    |
+| `recovery`                | `ADAPTABLE` | `UNKNOWN`   | `PASSABLE` en background   | `ADAPTABLE` con lista vacía    |
+| `interrupted_recovery`    | `ADAPTABLE` | `UNKNOWN`   | `PASSABLE` con ID/event ID | `ADAPTABLE` con UNKNOWN seguro |
+| `timeout`                 | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`                    |
+| `typed_failure`           | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`                    |
+| `input_budget`            | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`                    |
+| `output_budget`           | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`                    |
+| `provenance`              | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`                    |
+| `approval_boundary`       | `ADAPTABLE` | `BLOCKED`   | `ADAPTABLE`                | `ADAPTABLE`                    |
+| `malformed_response`      | `ADAPTABLE` | `UNKNOWN`   | `ADAPTABLE`                | `ADAPTABLE`                    |
+| `unavailable_provider`    | `ADAPTABLE` | `ADAPTABLE` | `ADAPTABLE`                | `ADAPTABLE`                    |
 
-Gemini API alcanza 3 `PASSABLE` y 11 `ADAPTABLE`; Vertex alcanza 1 `PASSABLE`,
-11 `ADAPTABLE` y 2 `BLOCKED`; Gemini CLI 1 `PASSABLE`, 11 `ADAPTABLE` y 2
-`BLOCKED`. Code Assist no constituye una interfaz evaluable. Todos conservan 0
-`PASS` hasta existir adapter autorizado, fixtures y ejecución real.
+Gemini API alcanza 3 `PASSABLE` y 11 `ADAPTABLE`; Vertex alcanza 1 `PASSABLE` y
+13 `ADAPTABLE`; Gemini CLI 1 `PASSABLE` y 13 `ADAPTABLE`. Code Assist no
+constituye una interfaz evaluable. Todos conservan 0 `PASS` hasta existir
+adapter autorizado, fixtures y ejecución real.
 
 ## 5. Modelo de costo y responsabilidad
 
@@ -382,3 +384,8 @@ de la garantía fail-safe del workflow:
 
 No cambia ninguna decisión individual o global, no se habilita provider y no se
 autoriza spike.
+
+Las clasificaciones `BLOCKED` de recovery online previas a M5-B0 correspondían
+al requisito histórico de exact recovery universal. Las tablas vigentes se
+normalizaron el 2026-09-22: una ruta sin primitive puede ser `ADAPTABLE` al
+límite UNKNOWN, sin adquirir capabilities ni superar sus demás gates.

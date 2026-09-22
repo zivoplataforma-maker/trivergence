@@ -1,54 +1,102 @@
 # ADR-0015: snapshots confirmados de ejecución de workflows
 
-Estado: `PROPOSED` — decisión documental; implementación diferida  
-Fecha: 2026-09-22
+Estado: `ACCEPTED` — decisión arquitectónica; implementación pendiente  
+Fecha: 2026-09-22  
+Aceptado: 2026-09-22
 
 ## Contexto
 
 La documentación anterior usaba “checkpoint” tanto para recovery de provider
 como para una futura ramificación de workflow. `ProviderRecoveryCheckpoint`
 puede describir progreso parcial de provider y coexistir con estado remoto
-incierto. No es una base segura para branching.
+incierto. No es una base segura para resume durable o branching.
 
-## Decisión propuesta
+## Decisión
 
-Se reserva el nombre conceptual `WorkflowExecutionSnapshot` para un punto
-inmutable y confirmado de la ejecución de orquestación.
+Se reserva `WorkflowExecutionSnapshot` para un punto inmutable y confirmado de
+la ejecución de orquestación.
 
 `ProviderRecoveryCheckpoint != WorkflowExecutionSnapshot`.
 
-Un snapshot futuro deberá identificar:
+El snapshot es principalmente un manifest de referencias inmutables y digests,
+no una copia de las fuentes de verdad. Solo materializa el mínimo imprescindible
+para validar el punto de reanudación. Debe identificar:
 
-- workflow definition/version y run;
-- plan/snapshot digest y pasos terminales incluidos;
-- outputs/evidence confirmados mediante referencias y digests;
-- approvals consumidas y budgets acumulados;
-- Memory/Project Context versions referenciadas, sin copiarlas como verdad
-  nueva;
-- instante, autor y motivo de creación;
-- digest canónico del snapshot.
+- workflow definition/version, run, plan y registry snapshot;
+- pasos terminales incluidos y digest del estado confirmado;
+- referencias/digests de outputs y Evidence confirmados;
+- referencias a approvals consumidas, nunca grants reutilizables;
+- referencia al ledger y consumo acumulado de budgets;
+- versiones/digests de Memory y Project Context autorizados;
+- referencias a Audit/provenance correlacionados;
+- instante, autor/motivo, versión de schema/canonicalización y digest del
+  snapshot.
+
+## Punto confirmado
+
+Un snapshot reanudable solo existe cuando todos sus pasos requeridos tienen
+transiciones persistidas y un outcome terminal verificable. No puede incluir
+como confirmado un attempt `dispatching`, `accepted`, `running`,
+`cancel_requested` o `remote_state_unknown`.
+
+Puede referenciar el hecho histórico de que otro attempt quedó UNKNOWN, pero ese
+hecho bloquea el avance dependiente y nunca se transforma en resultado
+confirmado. El snapshot no afirma estado remoto: referencia Evidence y Audit que
+sustentan el estado de orquestación observado.
 
 ## Invariantes
 
-1. No se crea un snapshot ramificable si algún paso requerido está
-   `remote_state_unknown`, `dispatching`, `running` o pendiente de cancelación.
-2. Un snapshot nunca afirma ni encapsula recovery remoto.
-3. Es inmutable; una rama crea nueva identidad y conserva enlace al origen.
-4. Branching no reutiliza approvals de efectos ni budgets como saldo nuevo.
-5. Efectos externos no se repiten automáticamente; requieren nueva evaluación y
-   autorización.
-6. Audit y Evidence originales permanecen append-only e intactos.
-7. Private mode y retención determinan qué referencias/material pueden formar
-   parte del snapshot.
+1. No encapsula recovery envelope/checkpoint remoto ni lo eleva a workflow
+   confirmado.
+2. Es inmutable; corregir o avanzar crea una nueva versión enlazada.
+3. No reutiliza approvals. Resume o rama reevalúan Policy y obtienen aprobación
+   nueva cuando corresponda.
+4. No reinicia budgets: conserva ledger y baseline consumido; una rama futura
+   recibe identidad propia sin saldo duplicado.
+5. No duplica Memory, Project Context, Audit o Evidence. Los referencia por
+   identidad, versión y digest.
+6. Si una fuente referenciada expira o se elimina, el snapshot queda degradado o
+   no reanudable; no prolonga retención copiando contenido.
+7. Efectos externos no se repiten automáticamente. La reanudación comienza
+   después del límite confirmado y exige evaluación vigente.
+8. Su creación y uso son auditados, pero el snapshot no sustituye Audit ni
+   Evidence.
 
-## Alcance
+## Private mode, retención y datos
 
-P3-E1 podrá diseñar durabilidad usando snapshots confirmados, pero workflow
-branching permanece `LATER/EXPERIMENTAL`. Este ADR no autoriza implementar
-snapshot, branching o time travel.
+Private mode puede impedir crear un snapshot durable o limitarlo a referencias
+efímeras y digests no reversibles. La UI deberá advertir cuando esa elección
+renuncie a resume durable. El snapshot hereda la retención más restrictiva de
+sus referencias y nunca preserva contenido borrado mediante una copia interna.
+
+Project Context y Memory permanecen autoridades independientes: el snapshot fija
+las versiones usadas, no su contenido completo. Outputs solo se materializan
+cuando no existe otra fuente durable autorizada y una decisión de retención
+específica lo permite.
+
+## Resume y branching
+
+P3-E1 podrá usar snapshots confirmados para crash recovery/resume del mismo run
+bajo sus invariantes de budget y approval. **Branching continúa
+`LATER/EXPERIMENTAL`**: una rama tendrá identidad nueva, vínculo al snapshot
+origen, nueva evaluación y ninguna repetición implícita de efectos.
+
+Este ADR no define semántica de branching ni autoriza implementarla.
+
+## Relación con otras decisiones
+
+- [ADR-0011](0011-recovery-semantics.md) gobierna incertidumbre remota.
+- [ADR-0012](0012-provider-agnostic-recovery-envelope.md) modela material de
+  recovery de provider, nunca un snapshot confirmado de workflow.
+- [ADR-0013](0013-integrated-interrupted-recovery-conformance.md) deberá probar
+  restart y reapertura de persistence antes de acreditar resume seguro.
 
 ## Consecuencias y deuda
 
-La terminología queda separada antes de introducir código. En una fase futura se
-necesitarán schema, persistence, canonicalization, UI, threat model y tests de
-crash/branching; nada de ello forma parte de P3-0.
+La frontera evita que durable workflows creen otra base de Memory/Audit/Evidence
+y separa estado local confirmado de estado remoto incierto. La implementación
+futura necesita schema, persistence, canonicalización, invalidación por
+retención, UI, threat model y tests de crash/resume.
+
+Esta aceptación no implementa `WorkflowExecutionSnapshot`, durable workflows ni
+branching.

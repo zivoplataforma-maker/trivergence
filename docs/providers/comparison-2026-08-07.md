@@ -1,19 +1,23 @@
 # Expediente comparativo de proveedores sin API keys
 
-Estado: investigación completa; ninguna integración aprobada ni habilitada  
-Corte de fuentes: 2026-08-07  
-Renovación obligatoria: 2026-09-07 o ante cualquier cambio de fuente
+Estado: revisión documental vigente; ninguna integración aprobada ni
+habilitada  
+Corte de fuentes externas: 2026-09-15  
+Normalización ADR-0011: 2026-09-22  
+Próxima renovación: ante respuesta oficial o cambio de interfaz, términos o
+autenticación
 
 > Actualización Codex 2026-09-15: el expediente M5-A reemplaza la evaluación de
 > Codex de este comparativo. El resultado actual es `UNRESOLVED`, no
 > `CONDITIONAL`, porque el comando figura experimental/no soportado para
-> producción, falta claridad contractual para Plus/Pro y existe un gap de
-> recovery. Véase [codex-app-server-gate.md](codex-app-server-gate.md). La
-> evaluación M5-A2 de Claude también fue reemplazada el 2026-09-15: la mejor
-> ruta es ejecutar Claude Code oficial e inalterado, pero su resultado global
-> sigue `UNRESOLVED`. La evaluación M5-A3 de Google reemplaza ahora la columna
-> Gemini: Vertex AI mediante ADC es la mejor ruta sin key, pero continúa
-> `UNRESOLVED` por recovery y frontera de credenciales. Véase
+> producción y falta claridad contractual para Plus/Pro. La ausencia de exact
+> recovery es una capability no demostrada, no un bloqueo universal. Véase
+> [codex-app-server-gate.md](codex-app-server-gate.md). La evaluación M5-A2 de
+> Claude también fue reemplazada el 2026-09-15: la mejor ruta es ejecutar Claude
+> Code oficial e inalterado, pero su resultado global sigue `UNRESOLVED`. La
+> evaluación M5-A3 de Google reemplaza ahora la columna Gemini: Vertex AI
+> mediante ADC es la mejor ruta sin key, pero continúa `UNRESOLVED` por
+> custodia/identidad/billing/contrato. Véase
 > [google-gemini-gate.md](google-gemini-gate.md).
 
 Este expediente es análisis de producto y riesgo, no asesoramiento legal. Solo
@@ -25,8 +29,8 @@ un revisor jurídico autorizado puede aprobar la columna legal del gate.
 | -------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------- |
 | Codex App Server                 | ChatGPT browser/device code gestionado por Codex                            | JSON-RPC sobre `stdio`, streaming, cancelación, schemas y approvals | El embedding técnico está documentado; el entitlement de terceros con Plus/Pro no está claro | `UNRESOLVED — APP SERVER`  |
 | Claude Code oficial e inalterado | Login del propio usuario dentro del cliente oficial                         | `-p`, JSON/JSONL, schema, cancelación, sesiones y budgets           | Anthropic permite ejecutarlo en productos; el límite frente al Agent SDK necesita aclaración | `UNRESOLVED — CLAUDE CODE` |
-| Claude Platform mediante `ant`   | OAuth de Claude Console para desarrollo/scripting local; WIF para workloads | CLI/API JSON; el contrato de streaming/recovery aún no basta        | La API admite productos; competencia/reventa necesita aclaración para un orquestador         | `UNRESOLVED — PLATFORM`    |
-| Gemini en Vertex AI              | OAuth/ADC/IAM con proyecto Cloud y billing del usuario                      | API/SDK, streaming, schema JSON y function calling                  | Customer Applications contempladas; exact recovery no demostrado                             | `UNRESOLVED — VERTEX`      |
+| Claude Platform mediante `ant`   | OAuth de Claude Console para desarrollo/scripting local; WIF para workloads | CLI/API JSON; capabilities de recovery por demostrar                | La API admite productos; competencia/reventa necesita aclaración para un orquestador         | `UNRESOLVED — PLATFORM`    |
+| Gemini en Vertex AI              | OAuth/ADC/IAM con proyecto Cloud y billing del usuario                      | API/SDK, streaming, schema JSON y function calling                  | Customer Applications contempladas; custodia/binding/billing por resolver                    | `UNRESOLVED — VERTEX`      |
 | Gemini CLI/Code Assist OAuth     | Login Google del producto oficial                                           | La CLI tiene modos agentic/estructurados                            | Google prohíbe que software de terceros use/piggyback ese OAuth/backend                      | `REJECTED`                 |
 | Agent SDK con OAuth Claude.ai    | Login de suscripción embebido en una app                                    | SDK Python/TypeScript                                               | Anthropic exige aprobación previa para ofrecer login o rate limits                           | `REJECTED`                 |
 
@@ -143,16 +147,16 @@ pero no recupera el mismo turn interrumpido y debe aclararse si usar el binario
 como provider cae dentro del permiso de ejecución en productos sin convertirse
 en un login/rate-limit propio del Agent SDK. No se autoriza adapter ni spike.
 
-### Comparación M5-A: Codex frente a la mejor vía Claude
+### Comparación vigente M5-B0: Codex frente a la mejor vía Claude
 
 | Criterio                | Codex App Server                                         | Claude Code oficial e inalterado                               |
 | ----------------------- | -------------------------------------------------------- | -------------------------------------------------------------- |
-| Technical               | Experimental; protocolo rico; recovery bloqueado         | `-p`, JSONL y cancel documentados; recovery bloqueado          |
+| Technical               | Experimental; protocolo rico; sin turn recovery          | `-p`, JSONL y cancel documentados; sin turn recovery           |
 | Authentication          | Login ChatGPT gestionado; entitlement de terceros dudoso | Login gestionado por Claude Code; no se expone OAuth           |
 | Contractual             | Uso Plus/Pro por terceros sin confirmación inequívoca    | Ejecución en productos permitida; límite Agent SDK por aclarar |
 | Distribution            | Código Apache; interfaz no soportada en producción       | Binario propietario inalterado; instalación externa            |
-| Recovery                | `BLOCKED`                                                | `BLOCKED`                                                      |
-| Conformance             | 12 `ADAPTABLE`, 2 `BLOCKED`; 0 `PASS` real               | 5 `PASSABLE`, 7 `ADAPTABLE`, 2 `BLOCKED`; 0 `PASS`             |
+| Recovery                | Capabilities vacías; UNKNOWN seguro por probar           | Capabilities vacías; UNKNOWN seguro por probar                 |
+| Conformance             | 14 `ADAPTABLE`; 0 `PASS` real                            | 5 `PASSABLE`, 9 `ADAPTABLE`; 0 `PASS`                          |
 | Cost model              | Entitlement ChatGPT no aclarado para este producto       | Límites propios del plan; Console/API alternativa separada     |
 | Production maturity     | App Server experimental                                  | Cliente oficial con interfaz programática documentada          |
 | Third-party suitability | Técnica documentada; gate de cuenta/contrato abierto     | Ejecutable en productos; OAuth propio/SDK requiere aprobación  |
@@ -182,7 +186,7 @@ mínimo. ADC creado por `gcloud auth application-default login` evita que
 Trivergence capture contraseña o copie tokens, pero el proceso sigue usando una
 credencial renovable local. OAuth propio requeriría navegador externo, PKCE,
 callback loopback, scopes mínimos, verificación/branding y vault. Vertex queda
-abierto hasta un ADR de credenciales y una primitive de recovery exacto. “Sign
+abierto hasta un ADR de credenciales y evidencia de la frontera completa. “Sign
 in with Google” por sí solo autentica identidad y no autoriza Vertex.
 
 Fuentes oficiales:
@@ -199,8 +203,8 @@ Fuentes oficiales:
 
 Gemini Developer API es una API oficial para terceros y su Interactions API GA
 documenta interaction IDs, background execution, cancelación, polling y
-reconexión por event ID. Es la única ruta Google evaluada que satisface
-documentalmente exact recovery, pero exige API key/auth key y proyecto/billing
+reconexión por event ID. Es la ruta Google evaluada con primitives documentadas
+de background recovery, pero exige API key/auth key y proyecto/billing
 separados. Queda `CONDITIONALLY_APPROVED` solo como extensión futura fuera del
 flujo principal; no se autoriza implementación ni UX de keys.
 
@@ -229,15 +233,15 @@ Vertex/ADC. Por eso Vertex es `UNRESOLVED`, no `CONDITIONAL` ni `APPROVED`.
 
 | Criterio                   | Codex App Server                                                  | Claude Code oficial                                      | Mejor vía Google: Vertex AI + ADC                             |
 | -------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------- |
-| Technical maturity         | Protocolo rico, comando experimental/no soportado para producción | Headless/JSONL documentado                               | API Cloud de producción; recovery online incompleto           |
+| Technical maturity         | Protocolo rico, comando experimental/no soportado para producción | Headless/JSONL documentado                               | API Cloud de producción; sin recovery online demostrado       |
 | Third-party suitability    | Embedding técnico documentado; entitlement abierto                | Ejecución en productos documentada; frontera SDK abierta | Customer Applications y SDK/REST documentados                 |
 | Authentication             | Login ChatGPT gestionado; Plus/Pro por confirmar                  | Login gestionado en CLI; Free no incluido                | ADC/OAuth/IAM del usuario y proyecto Cloud                    |
 | Subscription compatibility | ChatGPT entitlement sin confirmación para este caso               | Pro/Max/Team/Enterprise en cliente oficial               | Ninguna: Google AI Plus/Pro/Ultra no paga Vertex              |
 | Contractual clarity        | `UNRESOLVED`                                                      | `UNRESOLVED`                                             | API Cloud clara; BYO-project/multi-provider requiere revisión |
 | Streaming                  | Documentado                                                       | JSONL documentado                                        | `streamGenerateContent` documentado                           |
 | Cancellation               | Documentada                                                       | Señal/proceso documentado                                | Abort adaptable; estado remoto online no demostrado           |
-| Recovery                   | `BLOCKED`                                                         | `BLOCKED`                                                | `BLOCKED` para inferencia online exacta                       |
-| Conformance                | 12 `ADAPTABLE`, 2 `BLOCKED`; 0 `PASS`                             | 5 `PASSABLE`, 7 `ADAPTABLE`, 2 `BLOCKED`; 0 `PASS`       | 1 `PASSABLE`, 11 `ADAPTABLE`, 2 `BLOCKED`; 0 `PASS`           |
+| Recovery                   | Vacío; UNKNOWN seguro por probar                                  | Vacío; UNKNOWN seguro por probar                         | Vacío online; UNKNOWN seguro por probar                       |
+| Conformance                | 14 `ADAPTABLE`; 0 `PASS`                                          | 5 `PASSABLE`, 9 `ADAPTABLE`; 0 `PASS`                    | 1 `PASSABLE`, 13 `ADAPTABLE`; 0 `PASS`                        |
 | Distribution               | Código Apache; interfaz experimental                              | Binario propietario, instalación externa                 | SDK Apache/REST; gcloud externo                               |
 | Cost/billing               | Entitlement ChatGPT por aclarar                                   | Plan propio; Platform separada                           | Proyecto Cloud del usuario, PayGo/quota                       |
 | Security boundary          | Proceso oficial + app server                                      | Proceso oficial inalterado                               | Adapter → Google Auth/ADC → endpoint Cloud allowlisted        |
@@ -266,12 +270,14 @@ legal corresponde reconsiderar un spike aislado.
 - disclosures de IA, revisión humana y restricciones de alto impacto;
 - prueba de región/export, marca, redistribución y actualización de términos.
 
-## Addendum M5-B0: recovery por capability (2026-09-21)
+## Conclusión vigente M5-B0: recovery por capability (2026-09-22)
 
-La columna histórica “Recovery: BLOCKED” significaba “sin exact recovery del
-mismo turn”. Tras [ADR-0011](../architecture/adr/0011-recovery-semantics.md),
-esa ausencia ya no bloquea por sí sola una integración: bloquea reanudar, pero
-Runtime puede conservar la garantía global deteniendo el workflow en UNKNOWN.
+La columna histórica “Recovery: BLOCKED”, conservada en versiones anteriores de
+Git, significaba “sin exact recovery del mismo turn”. Tras
+[ADR-0011](../architecture/adr/0011-recovery-semantics.md), esa ausencia ya no
+bloquea por sí sola una integración: bloquea reanudar, pero Runtime puede
+conservar la garantía global deteniendo el workflow en UNKNOWN. Las tablas
+activas de este documento ya usan esta conclusión.
 
 | Ruta                               | Capabilities defendibles con evidencia existente | Impacto técnico                      | Gate global                                              |
 | ---------------------------------- | ------------------------------------------------ | ------------------------------------ | -------------------------------------------------------- |

@@ -11,13 +11,13 @@ No habilita Codex, no aprueba una attestation y no cambia M5 de `PARTIAL`.
 
 ## Decisión
 
-| Gate                | Resultado                | Motivo determinante                                                                                                                                      |
-| ------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Technical Gate      | `UNRESOLVED`             | Existe una interfaz oficial y versionable, pero el comando se declara experimental/no soportado para producción y no hay recovery desde checkpoint.      |
-| Security Gate       | `CONDITIONALLY_APPROVED` | El aislamiento es viable con proceso local, `stdio` y fail-closed, pero falta validar el binario y el protocolo con fixtures hostiles.                   |
-| Authentication Gate | `CONDITIONALLY_APPROVED` | App Server puede gestionar browser/device login sin entregar tokens a Trivergence; falta validación end-to-end y política oficial por tipo de cuenta.    |
-| Contractual Gate    | `UNRESOLVED`             | La documentación invita a integrar App Server en productos, pero no aclara inequívocamente el uso por un tercero con Plus/Pro frente a los Terms of Use. |
-| Distribution Gate   | `CONDITIONALLY_APPROVED` | La estrategia sin bundling es viable y el repositorio es Apache-2.0; siguen pendientes soporte/versiones, marca y confirmación del servicio autenticado. |
+| Gate                | Resultado                | Motivo determinante                                                                                                                                                                                     |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Technical Gate      | `UNRESOLVED`             | Existe una interfaz oficial y versionable, pero el comando se declara experimental/no soportado para producción; la ausencia de turn recovery es una capability no demostrada, no un bloqueo universal. |
+| Security Gate       | `CONDITIONALLY_APPROVED` | El aislamiento es viable con proceso local, `stdio` y fail-closed, pero falta validar el binario y el protocolo con fixtures hostiles.                                                                  |
+| Authentication Gate | `CONDITIONALLY_APPROVED` | App Server puede gestionar browser/device login sin entregar tokens a Trivergence; falta validación end-to-end y política oficial por tipo de cuenta.                                                   |
+| Contractual Gate    | `UNRESOLVED`             | La documentación invita a integrar App Server en productos, pero no aclara inequívocamente el uso por un tercero con Plus/Pro frente a los Terms of Use.                                                |
+| Distribution Gate   | `CONDITIONALLY_APPROVED` | La estrategia sin bundling es viable y el repositorio es Apache-2.0; siguen pendientes soporte/versiones, marca y confirmación del servicio autenticado.                                                |
 
 Regla aplicada: un gate obligatorio `UNRESOLVED` impide `APPROVED`. El resultado
 global es por tanto **`UNRESOLVED`**.
@@ -183,10 +183,10 @@ Condiciones de diseño:
 10. ningún registro, dispatcher, attestation confiable o control UI hasta
     aprobar todos los gates.
 
-No se creó un spike: los gates técnico y contractual siguen `UNRESOLVED`; el
-comando no tiene soporte de producción documentado y dos garantías de
-conformidad (recovery e interrupted recovery) no tienen una equivalencia oficial
-segura. Un mock del protocolo no resolvería esos bloqueos.
+No se creó un spike: los gates técnico y contractual siguen `UNRESOLVED` y el
+comando no tiene soporte de producción documentado. La integración futura
+debería demostrar el límite UNKNOWN del sistema aun declarando recovery vacío;
+un mock del protocolo no resolvería los gates externos.
 
 ## Mapping contra `ProviderAdapter`
 
@@ -214,31 +214,32 @@ segura. Un mock del protocolo no resolvería esos bloqueos.
 No se ejecutó la suite contra Codex porque no existe adapter ni autorización
 para conectarlo. Esta es una evaluación conceptual; la suite no fue modificada.
 
-| Comprobación              | Resultado esperado | Evidencia/gap                                                             |
-| ------------------------- | ------------------ | ------------------------------------------------------------------------- |
-| `capability_declaration`  | `ADAPTABLE`        | Manifest y schema permiten una capability estructurada versionada.        |
-| `prepare_context_preview` | `ADAPTABLE`        | Totalmente local antes de iniciar App Server.                             |
-| `execute_and_stream`      | `ADAPTABLE`        | Turn y stream están documentados; falta fixture real.                     |
-| `cancellation`            | `ADAPTABLE`        | Existe `turn/interrupt`; falta probar eventos tardíos y proceso huérfano. |
-| `recovery`                | `BLOCKED`          | No existe replay idempotente desde el checkpoint exigido.                 |
-| `interrupted_recovery`    | `BLOCKED`          | `thread/resume` no reanuda un turn interrumpido desde offset.             |
-| `timeout`                 | `ADAPTABLE`        | Timer local, interrupt y kill tree supervisado.                           |
-| `typed_failure`           | `ADAPTABLE`        | Error envelope y estados terminales mapeables.                            |
-| `input_budget`            | `ADAPTABLE`        | Se aplica en `prepare`, antes de egress.                                  |
-| `output_budget`           | `ADAPTABLE`        | Contador incremental seguido de interrupt/fail closed.                    |
-| `provenance`              | `ADAPTABLE`        | Digests de adapter/binario/schema/request/context.                        |
-| `approval_boundary`       | `ADAPTABLE`        | Runtime bloquea antes del dispatch; requests del server se declinan.      |
-| `malformed_response`      | `ADAPTABLE`        | SchemaGate y AdapterHost rechazan mensajes/resultados inválidos.          |
-| `unavailable_provider`    | `ADAPTABLE`        | Sin attestation confiable no existe registration en AdapterHost.          |
+| Comprobación              | Resultado esperado | Evidencia/gap                                                                           |
+| ------------------------- | ------------------ | --------------------------------------------------------------------------------------- |
+| `capability_declaration`  | `ADAPTABLE`        | Manifest y schema permiten una capability estructurada versionada.                      |
+| `prepare_context_preview` | `ADAPTABLE`        | Totalmente local antes de iniciar App Server.                                           |
+| `execute_and_stream`      | `ADAPTABLE`        | Turn y stream están documentados; falta fixture real.                                   |
+| `cancellation`            | `ADAPTABLE`        | Existe `turn/interrupt`; falta probar eventos tardíos y proceso huérfano.               |
+| `recovery`                | `ADAPTABLE`        | Declaración honesta de capabilities vacías y rechazo tipado de recovery no soportado.   |
+| `interrupted_recovery`    | `ADAPTABLE`        | La integración completa debe producir UNKNOWN seguro, sin retry, y preservar evidencia. |
+| `timeout`                 | `ADAPTABLE`        | Timer local, interrupt y kill tree supervisado.                                         |
+| `typed_failure`           | `ADAPTABLE`        | Error envelope y estados terminales mapeables.                                          |
+| `input_budget`            | `ADAPTABLE`        | Se aplica en `prepare`, antes de egress.                                                |
+| `output_budget`           | `ADAPTABLE`        | Contador incremental seguido de interrupt/fail closed.                                  |
+| `provenance`              | `ADAPTABLE`        | Digests de adapter/binario/schema/request/context.                                      |
+| `approval_boundary`       | `ADAPTABLE`        | Runtime bloquea antes del dispatch; requests del server se declinan.                    |
+| `malformed_response`      | `ADAPTABLE`        | SchemaGate y AdapterHost rechazan mensajes/resultados inválidos.                        |
+| `unavailable_provider`    | `ADAPTABLE`        | Sin attestation confiable no existe registration en AdapterHost.                        |
 
-Resultado conceptual: **12 adaptables, 2 bloqueadas, 0 verificadas contra un
-Codex real**. No se reduce `recoveryPolicy` ni se debilita la suite para hacer
-encajar al proveedor.
+Resultado conceptual vigente: **14 adaptables, 0 verificadas contra un Codex
+real**. “Adaptable” no implica exact recovery ni aprobación: las dos pruebas de
+recovery deben demostrar manifest honesto o límite UNKNOWN seguro sin debilitar
+la suite.
 
 ## Riesgos y bloqueos pendientes
 
 - respuesta oficial sobre Plus/Pro y la cláusula de extracción programática;
-- semántica segura e idempotente para recovery/interrupted recovery;
+- manifest honesto de recovery y prueba integrada del límite UNKNOWN;
 - rango de versiones soportado, schema/digest y política de actualización;
 - identidad de cliente `trivergence` y alta en known clients si aplica;
 - límites/rate limits y representación de budgets para suscripciones;
@@ -259,7 +260,7 @@ Reabrir únicamente cuando exista una respuesta oficial citable a las preguntas
 contractuales y técnicas. Entonces, antes de implementar el adapter productivo:
 
 1. fijar versión oficial y schema estable;
-2. resolver recovery sin duplicar efectos ni relajar la suite;
+2. probar UNKNOWN seguro sin duplicar efectos ni relajar la suite;
 3. aprobar threat model y mecanismo de verificación de binario;
 4. construir un spike aislado solo con fixtures no privados;
 5. ejecutar las 14 comprobaciones y todos los gates;
@@ -279,3 +280,8 @@ como bloqueo técnico universal, pero no lo convierte en capability soportada.
 No cambia la decisión global `UNRESOLVED`: madurez de producción,
 autenticación/entitlement, autorización contractual y distribución siguen
 abiertas. No se autorizan adapter ni spike y no se alteró el trust store.
+
+Las tablas anteriores fueron normalizadas el 2026-09-22. La evaluación previa a
+M5-B0 clasificaba `recovery` e `interrupted_recovery` como `BLOCKED` por exigir
+exact recovery universal; queda conservada como antecedente histórico en Git, no
+como conclusión vigente.
