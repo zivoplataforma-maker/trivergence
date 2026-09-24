@@ -1,6 +1,6 @@
 # Roadmap de Trivergence
 
-Última revisión: 2026-09-22
+Última revisión: 2026-09-24
 
 El roadmap usa puertas de evidencia, no porcentajes subjetivos. Trivergence
 evoluciona desde un núcleo de orquestación verificable hacia una capa
@@ -240,15 +240,22 @@ Gateway podrá reutilizar esta frontera sin crear otro supervisor.
 
 ## P3-E1 — Durable Workflow State
 
-Estado: `PLANNED`. Dependencias: P3-A1, ADR-0011, ADR-0015 y persistence/Runtime
-actuales.
+Estado: `DONE` (2026-09-24). Dependencias: P3-A1, ADR-0011, ADR-0015 y
+persistence/Runtime actuales.
 
-Objetivo: estado durable para pause/resume, aprobación/input/evento, restart,
-deadlines, budgets/provenance y `remote_state_unknown`. Debe distinguir futuros
-`WorkflowExecutionSnapshot` de `ProviderRecoveryCheckpoint`.
+Resultado: SQLite conserva el manifest del workflow, lifecycle y revisión de
+cada step, dependencias, referencias de approval/attempt/evidence, bindings de
+Project Context, provenance por digests y contabilidad monotónica de dispatch,
+provider calls y bytes observados. Startup recovery bloquea el workflow y deja
+todo dispatch sin resultado verificable como `unknown`; nunca lo reintenta.
 
-Puerta de salida futura: crash inyectado en cada frontera conserva estado y
-nunca duplica efectos ni ejecuta retry inseguro.
+La reanudación automática solo se permite para steps nunca despachados cuando no
+dependen de outputs efímeros perdidos. Private mode no crea estado durable de
+workflow y renuncia honestamente al resume entre procesos. El
+`WorkflowExecutionSnapshot` de ADR-0015 sigue pendiente: el durable state actual
+no se presenta como snapshot ni copia outputs, Memory, Context, Audit o
+Evidence. La reanudación está disponible en Runtime; la UI todavía no ofrece una
+acción para invocarla tras reabrir la aplicación.
 
 ## P3-B1 — Agent Profiles declarativos
 

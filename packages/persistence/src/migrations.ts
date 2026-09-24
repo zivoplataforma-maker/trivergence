@@ -343,6 +343,73 @@ export const migrations: readonly Migration[] = [
         ON project_context_snapshots(digest);
     `,
   },
+  {
+    version: "0009_durable_workflow_state",
+    sql: `
+      CREATE TABLE durable_workflow_executions (
+        run_id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL,
+        workflow_definition_version TEXT NOT NULL,
+        schema_version TEXT NOT NULL CHECK (schema_version = '1'),
+        plan_digest TEXT NOT NULL CHECK (length(plan_digest) = 64),
+        project_context_id TEXT NOT NULL,
+        project_context_revision INTEGER NOT NULL CHECK (project_context_revision > 0),
+        project_context_digest TEXT NOT NULL CHECK (length(project_context_digest) = 64),
+        workspace_id TEXT NOT NULL,
+        lifecycle TEXT NOT NULL CHECK (lifecycle IN (
+          'prepared', 'running', 'blocked', 'succeeded', 'failed', 'cancelled'
+        )),
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        budget_limits_digest TEXT NOT NULL CHECK (length(budget_limits_digest) = 64),
+        dispatched_step_ids_json TEXT NOT NULL CHECK (length(dispatched_step_ids_json) <= 32768),
+        provider_calls_used INTEGER NOT NULL CHECK (provider_calls_used >= 0),
+        output_bytes_observed INTEGER NOT NULL CHECK (output_bytes_observed >= 0),
+        terminal_reason TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        FOREIGN KEY (run_id) REFERENCES execution_runs(id) ON DELETE CASCADE,
+        FOREIGN KEY (workflow_id) REFERENCES execution_plans(id) ON DELETE RESTRICT
+      ) STRICT;
+
+      CREATE TABLE durable_workflow_steps (
+        run_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL,
+        step_id TEXT NOT NULL,
+        capability_id TEXT NOT NULL,
+        dependencies_json TEXT NOT NULL CHECK (length(dependencies_json) <= 8192),
+        lifecycle TEXT NOT NULL CHECK (lifecycle IN (
+          'pending', 'ready', 'running', 'blocked', 'unknown',
+          'succeeded', 'failed', 'cancelled', 'timed_out'
+        )),
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        dispatch_started INTEGER NOT NULL CHECK (dispatch_started IN (0, 1)),
+        effect_class TEXT NOT NULL CHECK (effect_class IN (
+          'pure', 'read_only', 'reversible', 'side_effectful', 'irreversible'
+        )),
+        approval_id TEXT,
+        attempt_id TEXT,
+        evidence_id TEXT,
+        output_digest TEXT CHECK (output_digest IS NULL OR length(output_digest) = 64),
+        terminal_reason TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, step_id),
+        FOREIGN KEY (run_id, plan_id) REFERENCES execution_runs(id, plan_id) ON DELETE CASCADE,
+        FOREIGN KEY (plan_id, step_id) REFERENCES plan_steps(plan_id, step_id) ON DELETE RESTRICT,
+        FOREIGN KEY (approval_id) REFERENCES approvals(id) ON DELETE RESTRICT,
+        FOREIGN KEY (attempt_id) REFERENCES provider_execution_attempts(id) ON DELETE RESTRICT,
+        FOREIGN KEY (evidence_id) REFERENCES step_evidence(id) ON DELETE RESTRICT
+      ) STRICT;
+
+      CREATE INDEX durable_workflow_lifecycle_idx
+        ON durable_workflow_executions(lifecycle, updated_at);
+      CREATE INDEX durable_workflow_workspace_idx
+        ON durable_workflow_executions(workspace_id, expires_at);
+      CREATE INDEX durable_workflow_step_lifecycle_idx
+        ON durable_workflow_steps(run_id, lifecycle);
+    `,
+  },
 ];
 
 const checksum = (sql: string) =>

@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import {
   approvalRecordSchema,
   classifyOperationEffect,
+  durableWorkflowExecutionSchema,
+  durableWorkflowStepSchema,
   executionRunSchema,
   orchestrationPreviewSchema,
   policyDecisionSchema,
@@ -12,6 +14,8 @@ import {
   type ApprovalRecord,
   type AuditEventType,
   type AuditPayload,
+  type DurableWorkflowExecution,
+  type DurableWorkflowStep,
   type ExecutionRun,
   type OrchestrationPreview,
   type PlanExecutionBinding,
@@ -48,6 +52,45 @@ export interface RuntimePersistence {
   ): ExecutionRun;
   recoverRunningRuns(updatedAt: string): string[];
   appendEvidence(evidence: StepEvidence): void;
+  createDurableWorkflow(
+    workflow: DurableWorkflowExecution,
+    steps: readonly DurableWorkflowStep[],
+  ): void;
+  findDurableWorkflow(runId: string): DurableWorkflowExecution | undefined;
+  listDurableWorkflowSteps(runId: string): DurableWorkflowStep[];
+  updateDurableWorkflowLifecycle(
+    runId: string,
+    next: DurableWorkflowExecution["lifecycle"],
+    updatedAt: string,
+    terminalReason?: string,
+  ): DurableWorkflowExecution;
+  finishDurableWorkflowRun(
+    runId: string,
+    runStatus: "completed" | "failed" | "cancelled" | "timed_out" | "orphaned",
+    workflowStatus: "succeeded" | "failed" | "cancelled" | "blocked",
+    updatedAt: string,
+    reason: string,
+  ): void;
+  startDurableWorkflowStep(
+    runId: string,
+    stepId: string,
+    updatedAt: string,
+    providerCall: boolean,
+    approvalId?: string,
+    attemptId?: string,
+  ): DurableWorkflowStep;
+  recordDurableWorkflowStepTerminal(
+    evidence: StepEvidence,
+    next: "succeeded" | "failed" | "cancelled" | "timed_out",
+    terminalReason: string,
+    outputBytes: number,
+  ): void;
+  markDurableWorkflowStepUnknown(
+    runId: string,
+    stepId: string,
+    updatedAt: string,
+    reason: string,
+  ): void;
   saveProviderCheckpoint(
     checkpoint: ProviderCheckpointRecord,
   ): ProviderCheckpointRecord;
@@ -111,6 +154,8 @@ export interface RuntimeExecutionOptions {
   readonly onEvent?: (event: RuntimeStreamEvent) => void;
   /** IDs opacos de checkpoints persistidos; se consumen una sola vez. */
   readonly recoveryCheckpointIds?: Readonly<Record<string, string>>;
+  /** Reanuda solo un estado durable seguro; nunca repite steps inciertos. */
+  readonly resumeRunId?: string;
 }
 
 export interface RuntimeExecutionResult {
@@ -264,7 +309,39 @@ export class RuntimeEngine {
       );
     }
 
+    const resumeSteps = options.resumeRunId
+      ? this.#persistence.listDurableWorkflowSteps(options.resumeRunId)
+      : [];
+    if (
+      options.resumeRunId &&
+      (resumeSteps.length === 0 ||
+        resumeSteps.some((step) =>
+          [
+            "running",
+            "unknown",
+            "blocked",
+            "failed",
+            "cancelled",
+            "timed_out",
+          ].includes(step.lifecycle),
+        ))
+    ) {
+      return this.#blocked(
+        options.resumeRunId,
+        new Error("Durable workflow has an uncertain or terminal step"),
+        preview.request.privacyMode !== "standard",
+      );
+    }
+
     for (const resolved of resolvedSteps) {
+      if (
+        resumeSteps.some(
+          (step) =>
+            step.stepId === resolved.step.id && step.lifecycle === "succeeded",
+        )
+      ) {
+        continue;
+      }
       if (resolved.policy.decision !== "require_approval") continue;
       const approvalId = options.approvalIds?.[resolved.step.id];
       const approval = approvalId
@@ -320,19 +397,133 @@ export class RuntimeEngine {
       );
     }
 
+    const durable = preview.request.privacyMode === "standard";
     const now = this.#clock().toISOString();
-    const run = executionRunSchema.parse({
-      id: options.runId ?? this.#idFactory(),
-      requestId: preview.request.id,
-      planId: preview.plan.id,
-      registrySnapshotId: preview.registrySnapshot.id,
-      planDigest: preview.planIntegrity.digest,
-      status: "planned",
-      createdAt: now,
-      updatedAt: now,
-    });
-    this.#persistence.createRun(run);
+    let run: ExecutionRun;
+    if (options.resumeRunId) {
+      if (!durable || options.runId) {
+        return this.#blocked(
+          preview.plan.id,
+          new Error(
+            "Durable resume requires standard mode and a single run identity",
+          ),
+          preview.request.privacyMode !== "standard",
+        );
+      }
+      const existingRun = this.#persistence.findRun(options.resumeRunId);
+      const existingWorkflow = this.#persistence.findDurableWorkflow(
+        options.resumeRunId,
+      );
+      const unsafe = resumeSteps.some((step) =>
+        [
+          "running",
+          "unknown",
+          "blocked",
+          "failed",
+          "cancelled",
+          "timed_out",
+        ].includes(step.lifecycle),
+      );
+      const unavailableDependencyOutput = resumeSteps.some(
+        (step) =>
+          ["ready", "pending"].includes(step.lifecycle) &&
+          step.dependencies.some((dependencyId) =>
+            resumeSteps.some(
+              (dependency) =>
+                dependency.stepId === dependencyId &&
+                dependency.lifecycle === "succeeded",
+            ),
+          ),
+      );
+      if (
+        !existingRun ||
+        !existingWorkflow ||
+        existingRun.status !== "orphaned" ||
+        existingWorkflow.lifecycle !== "blocked" ||
+        existingRun.planId !== preview.plan.id ||
+        existingRun.planDigest !== preview.planIntegrity.digest ||
+        existingWorkflow.projectContextId !== preview.projectContext.id ||
+        existingWorkflow.projectContextRevision !==
+          preview.projectContext.revision ||
+        existingWorkflow.projectContextDigest !==
+          preview.projectContext.digest ||
+        existingWorkflow.workspaceId !== preview.projectContext.workspace.id ||
+        unsafe ||
+        unavailableDependencyOutput
+      ) {
+        return this.#blocked(
+          options.resumeRunId,
+          new Error(
+            "Durable workflow cannot be resumed without verified state and outputs",
+          ),
+          false,
+        );
+      }
+      run = existingRun;
+      this.#persistence.updateRunStatus(run.id, "running", now);
+      this.#persistence.updateDurableWorkflowLifecycle(run.id, "running", now);
+    } else {
+      run = executionRunSchema.parse({
+        id: options.runId ?? this.#idFactory(),
+        requestId: preview.request.id,
+        planId: preview.plan.id,
+        registrySnapshotId: preview.registrySnapshot.id,
+        planDigest: preview.planIntegrity.digest,
+        status: "planned",
+        createdAt: now,
+        updatedAt: now,
+      });
+      this.#persistence.createRun(run);
+    }
+    if (durable && !options.resumeRunId) {
+      const expiresAt = new Date(
+        Date.parse(now) +
+          preview.projectContext.governance.retentionDays * 86_400_000,
+      ).toISOString();
+      this.#persistence.createDurableWorkflow(
+        durableWorkflowExecutionSchema.parse({
+          schemaVersion: "1",
+          runId: run.id,
+          workflowId: preview.plan.id,
+          workflowDefinitionVersion: preview.plan.plannerVersion,
+          planDigest: run.planDigest,
+          projectContextId: preview.projectContext.id,
+          projectContextRevision: preview.projectContext.revision,
+          projectContextDigest: preview.projectContext.digest,
+          workspaceId: preview.projectContext.workspace.id,
+          lifecycle: "prepared",
+          revision: 1,
+          budget: {
+            limitsDigest: this.#sha256(
+              canonicalizeJson(preview.projectContext.budget.limits),
+            ),
+            dispatchedStepIds: [],
+            providerCallsUsed: 0,
+            outputBytesObserved: 0,
+          },
+          createdAt: now,
+          updatedAt: now,
+          expiresAt,
+        }),
+        resolvedSteps.map(({ step }) =>
+          durableWorkflowStepSchema.parse({
+            runId: run.id,
+            planId: run.planId,
+            stepId: step.id,
+            capabilityId: step.capabilityId,
+            dependencies: step.dependsOn,
+            lifecycle: step.dependsOn.length === 0 ? "ready" : "pending",
+            revision: 1,
+            dispatchStarted: false,
+            effectClass: classifyOperationEffect(step.action),
+            createdAt: now,
+            updatedAt: now,
+          }),
+        ),
+      );
+    }
     if (
+      !options.resumeRunId &&
       resolvedSteps.some((step) => step.policy.decision === "require_approval")
     ) {
       this.#persistence.updateRunStatus(
@@ -341,24 +532,39 @@ export class RuntimeEngine {
         this.#clock().toISOString(),
       );
     }
-    this.#persistence.updateRunStatus(
-      run.id,
-      "running",
-      this.#clock().toISOString(),
-    );
+    if (!options.resumeRunId) {
+      this.#persistence.updateRunStatus(
+        run.id,
+        "running",
+        this.#clock().toISOString(),
+      );
+    }
+    if (durable && !options.resumeRunId) {
+      this.#persistence.updateDurableWorkflowLifecycle(
+        run.id,
+        "running",
+        this.#clock().toISOString(),
+      );
+    }
 
     const controller = new AbortController();
     const activeRun: {
       readonly controller: AbortController;
       readonly planId: string;
       providerAttemptId?: string;
+      currentStepId?: string;
     } = { controller, planId: preview.plan.id };
     this.#activeRuns.set(run.id, activeRun);
-    const completedSteps = new Set<string>();
-    let evidenceCount = 0;
+    const completedSteps = new Set(
+      resumeSteps
+        .filter((step) => step.lifecycle === "succeeded")
+        .map((step) => step.stepId),
+    );
+    let evidenceCount = completedSteps.size;
     const outputs: Record<string, unknown> = {};
     try {
       for (const initial of resolvedSteps) {
+        if (completedSteps.has(initial.step.id)) continue;
         if (!initial.step.dependsOn.every((id) => completedSteps.has(id))) {
           throw new Error(`Dependencies are incomplete for ${initial.step.id}`);
         }
@@ -463,6 +669,16 @@ export class RuntimeEngine {
           },
         };
         const providerRequest = current.descriptor.providerRequest;
+        if (durable && providerRequest) {
+          const workflow = this.#persistence.findDurableWorkflow(run.id);
+          if (
+            !workflow ||
+            workflow.budget.providerCallsUsed >=
+              currentPreview.projectContext.budget.limits.maxProviderCalls
+          ) {
+            throw new Error("Durable provider-call budget is exhausted");
+          }
+        }
         const providerAttempt = providerRequest
           ? this.#persistence.saveProviderExecutionAttempt({
               id: this.#idFactory(),
@@ -487,6 +703,19 @@ export class RuntimeEngine {
           : undefined;
         if (providerAttempt) {
           activeRun.providerAttemptId = providerAttempt.id;
+        }
+        if (durable) {
+          this.#persistence.startDurableWorkflowStep(
+            run.id,
+            current.step.id,
+            this.#clock().toISOString(),
+            providerAttempt !== undefined,
+            consumedApproval?.id,
+            providerAttempt?.id,
+          );
+          activeRun.currentStepId = current.step.id;
+        }
+        if (providerAttempt) {
           this.#persistence.updateProviderExecutionState(
             providerAttempt.id,
             "dispatching",
@@ -511,6 +740,21 @@ export class RuntimeEngine {
               outputs,
             );
           }
+          if (durable) {
+            this.#persistence.markDurableWorkflowStepUnknown(
+              run.id,
+              current.step.id,
+              this.#clock().toISOString(),
+              "dispatch_result_unavailable",
+            );
+            return this.#finishRun(
+              run.id,
+              "orphaned",
+              "Dispatch may have occurred; automatic retry is blocked",
+              evidenceCount,
+              outputs,
+            );
+          }
           throw error;
         } finally {
           delete activeRun.providerAttemptId;
@@ -523,6 +767,21 @@ export class RuntimeEngine {
             return this.#finishUnknown(
               run.id,
               current.step.id,
+              evidenceCount,
+              outputs,
+            );
+          }
+          if (durable) {
+            this.#persistence.markDurableWorkflowStepUnknown(
+              run.id,
+              current.step.id,
+              this.#clock().toISOString(),
+              "invalid_dispatch_result",
+            );
+            return this.#finishRun(
+              run.id,
+              "orphaned",
+              "Dispatch result was invalid; automatic retry is blocked",
               evidenceCount,
               outputs,
             );
@@ -548,12 +807,47 @@ export class RuntimeEngine {
             );
           }
         }
+        const observedOutputBytes =
+          result.output === undefined
+            ? 0
+            : Buffer.byteLength(canonicalizeJson(result.output), "utf8");
+        if (durable && result.output !== undefined) {
+          const workflow = this.#persistence.findDurableWorkflow(run.id);
+          if (
+            !workflow ||
+            workflow.budget.outputBytesObserved + observedOutputBytes >
+              currentPreview.projectContext.budget.limits.maxOutputBytes
+          ) {
+            result = {
+              outcome: "failed",
+              summary: "Workflow output budget exceeded",
+            };
+          }
+        }
+        if (durable && result.treeTerminationConfirmed === false) {
+          this.#persistence.markDurableWorkflowStepUnknown(
+            run.id,
+            current.step.id,
+            this.#clock().toISOString(),
+            "process_tree_termination_unconfirmed",
+          );
+          return this.#finishRun(
+            run.id,
+            "orphaned",
+            "Process tree termination could not be confirmed",
+            evidenceCount,
+            outputs,
+          );
+        }
         this.#appendEvidence(
           run,
           current,
           result,
           preview.request.privacyMode !== "standard",
+          durable,
+          observedOutputBytes,
         );
+        delete activeRun.currentStepId;
         if (result.outcome === "succeeded" && latestCheckpointRecordId) {
           this.#persistence.consumeProviderCheckpoint(
             latestCheckpointRecordId,
@@ -606,6 +900,26 @@ export class RuntimeEngine {
         outputs,
       );
     } catch (error) {
+      if (durable && activeRun.currentStepId) {
+        const currentStep = this.#persistence
+          .listDurableWorkflowSteps(run.id)
+          .find((step) => step.stepId === activeRun.currentStepId);
+        if (currentStep?.lifecycle === "running") {
+          this.#persistence.markDurableWorkflowStepUnknown(
+            run.id,
+            currentStep.stepId,
+            this.#clock().toISOString(),
+            "dispatch_terminal_unavailable",
+          );
+          return this.#finishRun(
+            run.id,
+            "orphaned",
+            "Dispatch terminal could not be verified",
+            evidenceCount,
+            outputs,
+          );
+        }
+      }
       const status = controller.signal.aborted ? "cancelled" : "failed";
       return this.#finishRun(
         run.id,
@@ -650,12 +964,33 @@ export class RuntimeEngine {
     resolution: "succeeded" | "failed" | "cancelled",
     actor: string,
   ): ProviderExecutionAttempt {
-    return this.#persistence.updateProviderExecutionState(
+    const current = this.#persistence.findProviderExecutionAttempt(attemptId);
+    const resolved = this.#persistence.updateProviderExecutionState(
       attemptId,
       resolution,
       this.#clock().toISOString(),
       actor,
     );
+    if (current && this.#persistence.findDurableWorkflow(current.runId)) {
+      this.#persistence.recordDurableWorkflowStepTerminal(
+        stepEvidenceSchema.parse({
+          id: this.#idFactory(),
+          runId: current.runId,
+          planId: current.planId,
+          stepId: current.stepId,
+          capabilityId: current.capabilityId,
+          subsystem: "provider",
+          capabilityVersion: current.adapterVersion,
+          outcome: resolution,
+          observedAt: this.#clock().toISOString(),
+          summary: `Remote state resolved by ${actor}`,
+        }),
+        resolution,
+        `Human resolution by ${actor}`,
+        0,
+      );
+    }
+    return resolved;
   }
 
   recoverOrphans(): string[] {
@@ -753,24 +1088,39 @@ export class RuntimeEngine {
     resolved: ResolvedStep,
     result: DispatchResult,
     privateMode: boolean,
+    durable: boolean,
+    observedOutputBytes: number,
   ): void {
-    this.#persistence.appendEvidence(
-      stepEvidenceSchema.parse({
-        id: this.#idFactory(),
-        runId: run.id,
-        planId: run.planId,
-        stepId: resolved.step.id,
-        capabilityId: resolved.step.capabilityId,
-        subsystem: resolved.step.subsystem,
-        capabilityVersion: resolved.descriptor.capabilityVersion,
-        outcome: result.outcome,
-        observedAt: this.#clock().toISOString(),
-        summary: privateMode
-          ? `Private ${resolved.step.subsystem} step ${result.outcome}`
-          : result.summary,
-        ...(result.outputDigest ? { outputDigest: result.outputDigest } : {}),
-      }),
-    );
+    if (result.outcome === "remote_state_unknown") {
+      throw new Error(
+        "Unknown remote state cannot be recorded as terminal evidence",
+      );
+    }
+    const evidence = stepEvidenceSchema.parse({
+      id: this.#idFactory(),
+      runId: run.id,
+      planId: run.planId,
+      stepId: resolved.step.id,
+      capabilityId: resolved.step.capabilityId,
+      subsystem: resolved.step.subsystem,
+      capabilityVersion: resolved.descriptor.capabilityVersion,
+      outcome: result.outcome,
+      observedAt: this.#clock().toISOString(),
+      summary: privateMode
+        ? `Private ${resolved.step.subsystem} step ${result.outcome}`
+        : result.summary,
+      ...(result.outputDigest ? { outputDigest: result.outputDigest } : {}),
+    });
+    if (durable) {
+      this.#persistence.recordDurableWorkflowStepTerminal(
+        evidence,
+        result.outcome,
+        evidence.summary,
+        observedOutputBytes,
+      );
+    } else {
+      this.#persistence.appendEvidence(evidence);
+    }
   }
 
   #validateDispatchResult(result: DispatchResult): void {
@@ -809,6 +1159,15 @@ export class RuntimeEngine {
     evidenceCount: number,
     outputs: Readonly<Record<string, unknown>>,
   ): RuntimeExecutionResult {
+    const durable = this.#persistence.findDurableWorkflow(runId);
+    if (durable?.lifecycle === "running") {
+      this.#persistence.markDurableWorkflowStepUnknown(
+        runId,
+        stepId,
+        this.#clock().toISOString(),
+        "remote_state_unknown",
+      );
+    }
     this.#persistence.updateRunStatus(
       runId,
       "orphaned",
@@ -838,6 +1197,30 @@ export class RuntimeEngine {
     evidenceCount: number,
     outputs: Readonly<Record<string, unknown>>,
   ): RuntimeExecutionResult {
+    const durable = this.#persistence.findDurableWorkflow(runId);
+    if (
+      durable &&
+      ["prepared", "running", "blocked"].includes(durable.lifecycle)
+    ) {
+      const workflowStatus =
+        status === "completed"
+          ? "succeeded"
+          : status === "cancelled"
+            ? "cancelled"
+            : status === "orphaned"
+              ? "blocked"
+              : "failed";
+      if (durable.lifecycle === "running") {
+        this.#persistence.finishDurableWorkflowRun(
+          runId,
+          status,
+          workflowStatus,
+          this.#clock().toISOString(),
+          reason,
+        );
+        return { status, reason, runId, evidenceCount, outputs };
+      }
+    }
     this.#persistence.updateRunStatus(
       runId,
       status,

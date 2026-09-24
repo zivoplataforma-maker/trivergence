@@ -5,6 +5,8 @@ import { backup, DatabaseSync } from "node:sqlite";
 
 import {
   approvalRecordSchema,
+  durableWorkflowExecutionSchema,
+  durableWorkflowStepSchema,
   executionRunSchema,
   orchestrationPreviewSchema,
   planExecutionBindingSchema,
@@ -16,6 +18,8 @@ import {
   type AuditEvent,
   type AuditEventType,
   type AuditPayload,
+  type DurableWorkflowExecution,
+  type DurableWorkflowStep,
   type ExecutionRun,
   type OrchestrationPreview,
   type PlanExecutionBinding,
@@ -119,8 +123,86 @@ const allowedRunTransitions: Readonly<
   failed: [],
   cancelled: [],
   timed_out: [],
-  orphaned: [],
+  orphaned: ["running"],
 };
+
+const workflowTransitions: Readonly<
+  Record<
+    DurableWorkflowExecution["lifecycle"],
+    readonly DurableWorkflowExecution["lifecycle"][]
+  >
+> = {
+  prepared: ["running", "blocked", "failed", "cancelled"],
+  running: ["blocked", "succeeded", "failed", "cancelled"],
+  blocked: ["running", "failed", "cancelled"],
+  succeeded: [],
+  failed: [],
+  cancelled: [],
+};
+
+const stepTransitions: Readonly<
+  Record<
+    DurableWorkflowStep["lifecycle"],
+    readonly DurableWorkflowStep["lifecycle"][]
+  >
+> = {
+  pending: ["ready", "blocked", "cancelled"],
+  ready: ["running", "blocked", "cancelled"],
+  running: ["succeeded", "failed", "cancelled", "timed_out", "unknown"],
+  blocked: ["ready", "failed", "cancelled"],
+  unknown: ["succeeded", "failed", "cancelled"],
+  succeeded: [],
+  failed: [],
+  cancelled: [],
+  timed_out: [],
+};
+
+const rowToWorkflowExecution = (
+  row: Record<string, unknown>,
+): DurableWorkflowExecution =>
+  durableWorkflowExecutionSchema.parse({
+    schemaVersion: row.schema_version,
+    runId: row.run_id,
+    workflowId: row.workflow_id,
+    workflowDefinitionVersion: row.workflow_definition_version,
+    planDigest: row.plan_digest,
+    projectContextId: row.project_context_id,
+    projectContextRevision: row.project_context_revision,
+    projectContextDigest: row.project_context_digest,
+    workspaceId: row.workspace_id,
+    lifecycle: row.lifecycle,
+    revision: row.revision,
+    budget: {
+      limitsDigest: row.budget_limits_digest,
+      dispatchedStepIds: JSON.parse(String(row.dispatched_step_ids_json)),
+      providerCallsUsed: row.provider_calls_used,
+      outputBytesObserved: row.output_bytes_observed,
+    },
+    ...(row.terminal_reason ? { terminalReason: row.terminal_reason } : {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    expiresAt: row.expires_at,
+  });
+
+const rowToWorkflowStep = (row: Record<string, unknown>): DurableWorkflowStep =>
+  durableWorkflowStepSchema.parse({
+    runId: row.run_id,
+    planId: row.plan_id,
+    stepId: row.step_id,
+    capabilityId: row.capability_id,
+    dependencies: JSON.parse(String(row.dependencies_json)),
+    lifecycle: row.lifecycle,
+    revision: row.revision,
+    dispatchStarted: row.dispatch_started === 1,
+    effectClass: row.effect_class,
+    ...(row.approval_id ? { approvalId: row.approval_id } : {}),
+    ...(row.attempt_id ? { attemptId: row.attempt_id } : {}),
+    ...(row.evidence_id ? { evidenceId: row.evidence_id } : {}),
+    ...(row.output_digest ? { outputDigest: row.output_digest } : {}),
+    ...(row.terminal_reason ? { terminalReason: row.terminal_reason } : {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
 
 const rowToRun = (row: Record<string, unknown>): ExecutionRun =>
   executionRunSchema.parse({
@@ -593,6 +675,527 @@ export class PersistenceStore {
     });
   }
 
+  createDurableWorkflow(
+    input: DurableWorkflowExecution,
+    stepInputs: readonly DurableWorkflowStep[],
+  ): void {
+    this.#assertWritable();
+    const workflow = durableWorkflowExecutionSchema.parse(input);
+    const steps = stepInputs.map((step) =>
+      durableWorkflowStepSchema.parse(step),
+    );
+    if (workflow.lifecycle !== "prepared" || workflow.revision !== 1) {
+      throw new Error(
+        "New durable workflows must start prepared at revision 1",
+      );
+    }
+    if (
+      steps.length === 0 ||
+      steps.some((step) => step.runId !== workflow.runId)
+    ) {
+      throw new Error("Durable workflow steps must belong to the workflow run");
+    }
+    if (Date.parse(workflow.expiresAt) <= Date.parse(workflow.createdAt)) {
+      throw new Error("Durable workflow expiry must follow creation");
+    }
+    this.#validateDurableWorkflowBinding(workflow);
+    const planSteps = this.#database
+      .prepare(
+        `SELECT step_id, capability_id, depends_on_json
+         FROM plan_steps WHERE plan_id = ?`,
+      )
+      .all(workflow.workflowId) as {
+      step_id: string;
+      capability_id: string;
+      depends_on_json: string;
+    }[];
+    if (
+      planSteps.length !== steps.length ||
+      planSteps.some((planned) => {
+        const step = steps.find(
+          (candidate) => candidate.stepId === planned.step_id,
+        );
+        return (
+          !step ||
+          step.capabilityId !== planned.capability_id ||
+          JSON.stringify(step.dependencies) !== planned.depends_on_json ||
+          step.planId !== workflow.workflowId ||
+          step.revision !== 1 ||
+          step.dispatchStarted ||
+          !["ready", "pending"].includes(step.lifecycle)
+        );
+      })
+    ) {
+      throw new Error("Durable workflow steps do not match the persisted plan");
+    }
+    this.#transaction(() => {
+      this.#database
+        .prepare(
+          `INSERT INTO durable_workflow_executions(
+            run_id, workflow_id, workflow_definition_version, schema_version,
+            plan_digest, project_context_id, project_context_revision,
+            project_context_digest, workspace_id, lifecycle, revision,
+            budget_limits_digest, dispatched_step_ids_json, provider_calls_used,
+            output_bytes_observed, terminal_reason, created_at, updated_at, expires_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          workflow.runId,
+          workflow.workflowId,
+          workflow.workflowDefinitionVersion,
+          workflow.schemaVersion,
+          workflow.planDigest,
+          workflow.projectContextId,
+          workflow.projectContextRevision,
+          workflow.projectContextDigest,
+          workflow.workspaceId,
+          workflow.lifecycle,
+          workflow.revision,
+          workflow.budget.limitsDigest,
+          JSON.stringify(workflow.budget.dispatchedStepIds),
+          workflow.budget.providerCallsUsed,
+          workflow.budget.outputBytesObserved,
+          workflow.terminalReason ?? null,
+          workflow.createdAt,
+          workflow.updatedAt,
+          workflow.expiresAt,
+        );
+      const insertStep = this.#database.prepare(
+        `INSERT INTO durable_workflow_steps(
+          run_id, plan_id, step_id, capability_id, dependencies_json,
+          lifecycle, revision, dispatch_started, effect_class, approval_id,
+          attempt_id, evidence_id, output_digest, terminal_reason,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const step of steps) {
+        insertStep.run(
+          step.runId,
+          step.planId,
+          step.stepId,
+          step.capabilityId,
+          JSON.stringify(step.dependencies),
+          step.lifecycle,
+          step.revision,
+          step.dispatchStarted ? 1 : 0,
+          step.effectClass,
+          step.approvalId ?? null,
+          step.attemptId ?? null,
+          step.evidenceId ?? null,
+          step.outputDigest ?? null,
+          step.terminalReason ?? null,
+          step.createdAt,
+          step.updatedAt,
+        );
+      }
+      this.#audit.append({
+        eventType: "workflow.state_created",
+        subjectId: workflow.runId,
+        payload: {
+          planDigest: workflow.planDigest,
+          projectContextDigest: workflow.projectContextDigest,
+          stepCount: steps.length,
+          workflowDefinitionVersion: workflow.workflowDefinitionVersion,
+        },
+      });
+    });
+  }
+
+  findDurableWorkflow(runId: string): DurableWorkflowExecution | undefined {
+    this.#assertOpen();
+    const row = this.#database
+      .prepare("SELECT * FROM durable_workflow_executions WHERE run_id = ?")
+      .get(runId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    const workflow = rowToWorkflowExecution(row);
+    this.#validateDurableWorkflowBinding(workflow);
+    this.listDurableWorkflowSteps(runId);
+    return workflow;
+  }
+
+  listDurableWorkflowSteps(runId: string): DurableWorkflowStep[] {
+    this.#assertOpen();
+    const steps = (
+      this.#database
+        .prepare(
+          `SELECT * FROM durable_workflow_steps
+           WHERE run_id = ? ORDER BY rowid`,
+        )
+        .all(runId) as Record<string, unknown>[]
+    ).map(rowToWorkflowStep);
+    const plan = this.#database
+      .prepare("SELECT plan_id FROM execution_runs WHERE id = ?")
+      .get(runId) as { plan_id: string } | undefined;
+    if (!plan) {
+      if (steps.length > 0) throw new Error("Durable workflow run is missing");
+      return [];
+    }
+    const planSteps = this.#database
+      .prepare(
+        `SELECT step_id, capability_id, depends_on_json
+         FROM plan_steps WHERE plan_id = ?`,
+      )
+      .all(plan.plan_id) as {
+      step_id: string;
+      capability_id: string;
+      depends_on_json: string;
+    }[];
+    const planned = new Map(planSteps.map((step) => [step.step_id, step]));
+    const durableExists = this.#database
+      .prepare("SELECT 1 FROM durable_workflow_executions WHERE run_id = ?")
+      .get(runId);
+    if (
+      durableExists &&
+      (steps.length !== planSteps.length ||
+        steps.some((step) => {
+          const source = planned.get(step.stepId);
+          const evidence = step.evidenceId
+            ? (this.#database
+                .prepare(
+                  `SELECT run_id, plan_id, step_id, outcome, output_digest
+                   FROM step_evidence WHERE id = ?`,
+                )
+                .get(step.evidenceId) as Record<string, unknown> | undefined)
+            : undefined;
+          return (
+            !source ||
+            step.planId !== plan.plan_id ||
+            step.capabilityId !== source.capability_id ||
+            JSON.stringify(step.dependencies) !== source.depends_on_json ||
+            [
+              "running",
+              "unknown",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "timed_out",
+            ].includes(step.lifecycle) !== step.dispatchStarted ||
+            (step.evidenceId !== undefined &&
+              (!evidence ||
+                evidence.run_id !== runId ||
+                evidence.plan_id !== plan.plan_id ||
+                evidence.step_id !== step.stepId ||
+                evidence.outcome !== step.lifecycle ||
+                evidence.output_digest !== (step.outputDigest ?? null))) ||
+            (["succeeded", "failed", "cancelled", "timed_out"].includes(
+              step.lifecycle,
+            ) &&
+              !step.evidenceId)
+          );
+        }))
+    ) {
+      throw new Error("Durable workflow step state is inconsistent");
+    }
+    return steps;
+  }
+
+  updateDurableWorkflowLifecycle(
+    runId: string,
+    next: DurableWorkflowExecution["lifecycle"],
+    updatedAt: string,
+    terminalReason?: string,
+  ): DurableWorkflowExecution {
+    this.#assertWritable();
+    return this.#transaction(() => {
+      const current = this.findDurableWorkflow(runId);
+      if (!current) throw new Error(`Durable workflow not found: ${runId}`);
+      if (!workflowTransitions[current.lifecycle].includes(next)) {
+        throw new Error(
+          `Invalid workflow transition: ${current.lifecycle} -> ${next}`,
+        );
+      }
+      if (next === "succeeded") {
+        const incomplete = this.#database
+          .prepare(
+            `SELECT COUNT(*) AS count FROM durable_workflow_steps
+             WHERE run_id = ? AND (lifecycle != 'succeeded' OR evidence_id IS NULL)`,
+          )
+          .get(runId) as { count: number };
+        if (incomplete.count > 0) {
+          throw new Error(
+            "Workflow cannot succeed with incomplete dependencies",
+          );
+        }
+      }
+      const result = this.#database
+        .prepare(
+          `UPDATE durable_workflow_executions
+           SET lifecycle = ?, revision = revision + 1, terminal_reason = ?, updated_at = ?
+           WHERE run_id = ? AND lifecycle = ? AND revision = ?`,
+        )
+        .run(
+          next,
+          terminalReason ?? null,
+          updatedAt,
+          runId,
+          current.lifecycle,
+          current.revision,
+        );
+      if (result.changes !== 1)
+        throw new Error("Durable workflow changed concurrently");
+      this.#audit.append({
+        eventType: "workflow.state_changed",
+        subjectId: runId,
+        payload: {
+          from: current.lifecycle,
+          revision: current.revision + 1,
+          to: next,
+        },
+      });
+      return this.findDurableWorkflow(runId)!;
+    });
+  }
+
+  finishDurableWorkflowRun(
+    runId: string,
+    runStatus: "completed" | "failed" | "cancelled" | "timed_out" | "orphaned",
+    workflowStatus: "succeeded" | "failed" | "cancelled" | "blocked",
+    updatedAt: string,
+    reason: string,
+  ): void {
+    this.#assertWritable();
+    this.#transaction(() => {
+      const run = this.findRun(runId);
+      const workflow = this.findDurableWorkflow(runId);
+      if (!run || !workflow || run.status !== "running") {
+        throw new Error("Durable workflow run is not running");
+      }
+      if (!workflowTransitions[workflow.lifecycle].includes(workflowStatus)) {
+        throw new Error("Invalid durable workflow terminal transition");
+      }
+      if (
+        (runStatus === "completed") !== (workflowStatus === "succeeded") ||
+        (runStatus === "cancelled") !== (workflowStatus === "cancelled") ||
+        (runStatus === "orphaned") !== (workflowStatus === "blocked")
+      ) {
+        throw new Error("Run and workflow terminal states disagree");
+      }
+      if (workflowStatus === "succeeded") {
+        const incomplete = this.#database
+          .prepare(
+            `SELECT COUNT(*) AS count FROM durable_workflow_steps
+             WHERE run_id = ? AND (lifecycle != 'succeeded' OR evidence_id IS NULL)`,
+          )
+          .get(runId) as { count: number };
+        if (incomplete.count > 0) {
+          throw new Error(
+            "Workflow cannot succeed with incomplete dependencies",
+          );
+        }
+      }
+      const workflowUpdate = this.#database
+        .prepare(
+          `UPDATE durable_workflow_executions
+           SET lifecycle = ?, revision = revision + 1,
+             terminal_reason = ?, updated_at = ?
+           WHERE run_id = ? AND lifecycle = ? AND revision = ?`,
+        )
+        .run(
+          workflowStatus,
+          reason,
+          updatedAt,
+          runId,
+          workflow.lifecycle,
+          workflow.revision,
+        );
+      const runUpdate = this.#database
+        .prepare(
+          `UPDATE execution_runs SET status = ?, updated_at = ?
+           WHERE id = ? AND status = 'running'`,
+        )
+        .run(runStatus, updatedAt, runId);
+      if (workflowUpdate.changes !== 1 || runUpdate.changes !== 1) {
+        throw new Error("Durable workflow changed concurrently");
+      }
+      this.#audit.append({
+        eventType: "workflow.state_changed",
+        subjectId: runId,
+        payload: {
+          from: workflow.lifecycle,
+          revision: workflow.revision + 1,
+          to: workflowStatus,
+        },
+      });
+      this.#audit.append({
+        eventType: "execution.run_status_changed",
+        subjectId: runId,
+        payload: { from: run.status, to: runStatus },
+      });
+    });
+  }
+
+  startDurableWorkflowStep(
+    runId: string,
+    stepId: string,
+    updatedAt: string,
+    providerCall: boolean,
+    approvalId?: string,
+    attemptId?: string,
+  ): DurableWorkflowStep {
+    this.#assertWritable();
+    return this.#transaction(() => {
+      const current = this.#findDurableWorkflowStep(runId, stepId);
+      if (
+        !current ||
+        current.lifecycle !== "ready" ||
+        current.dispatchStarted
+      ) {
+        throw new Error(
+          "Durable workflow step is not ready for first dispatch",
+        );
+      }
+      const workflow = this.findDurableWorkflow(runId);
+      if (!workflow || workflow.lifecycle !== "running") {
+        throw new Error("Durable workflow is not running");
+      }
+      const dispatched = [...workflow.budget.dispatchedStepIds, stepId];
+      const result = this.#database
+        .prepare(
+          `UPDATE durable_workflow_steps SET lifecycle = 'running',
+             revision = revision + 1, dispatch_started = 1,
+             approval_id = ?, attempt_id = ?, updated_at = ?
+           WHERE run_id = ? AND step_id = ? AND lifecycle = 'ready'
+             AND dispatch_started = 0 AND revision = ?`,
+        )
+        .run(
+          approvalId ?? null,
+          attemptId ?? null,
+          updatedAt,
+          runId,
+          stepId,
+          current.revision,
+        );
+      if (result.changes !== 1)
+        throw new Error("Durable workflow step changed concurrently");
+      this.#database
+        .prepare(
+          `UPDATE durable_workflow_executions
+           SET dispatched_step_ids_json = ?, provider_calls_used = provider_calls_used + ?,
+             revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND revision = ?`,
+        )
+        .run(
+          JSON.stringify(dispatched),
+          providerCall ? 1 : 0,
+          updatedAt,
+          runId,
+          workflow.revision,
+        );
+      this.#audit.append({
+        eventType: "workflow.step_state_changed",
+        subjectId: runId,
+        payload: {
+          from: "ready",
+          revision: current.revision + 1,
+          stepId,
+          to: "running",
+        },
+      });
+      return this.#findDurableWorkflowStep(runId, stepId)!;
+    });
+  }
+
+  recordDurableWorkflowStepTerminal(
+    evidenceInput: StepEvidence,
+    next: Extract<
+      DurableWorkflowStep["lifecycle"],
+      "succeeded" | "failed" | "cancelled" | "timed_out"
+    >,
+    terminalReason: string,
+    outputBytes: number,
+  ): void {
+    this.#assertWritable();
+    const evidence = stepEvidenceSchema.parse(evidenceInput);
+    if (evidence.outcome !== next) {
+      throw new Error("Evidence outcome does not match durable terminal state");
+    }
+    if (!Number.isSafeInteger(outputBytes) || outputBytes < 0) {
+      throw new Error("Invalid durable workflow output accounting");
+    }
+    this.#transaction(() => {
+      const current = this.#findDurableWorkflowStep(
+        evidence.runId,
+        evidence.stepId,
+      );
+      if (!current || !stepTransitions[current.lifecycle].includes(next)) {
+        throw new Error("Invalid durable workflow step terminal transition");
+      }
+      this.#insertEvidence(evidence);
+      const result = this.#database
+        .prepare(
+          `UPDATE durable_workflow_steps SET lifecycle = ?, revision = revision + 1,
+             evidence_id = ?, output_digest = ?, terminal_reason = ?, updated_at = ?
+           WHERE run_id = ? AND step_id = ? AND lifecycle = ? AND revision = ?`,
+        )
+        .run(
+          next,
+          evidence.id,
+          evidence.outputDigest ?? null,
+          terminalReason,
+          evidence.observedAt,
+          evidence.runId,
+          evidence.stepId,
+          current.lifecycle,
+          current.revision,
+        );
+      if (result.changes !== 1)
+        throw new Error("Durable workflow step changed concurrently");
+      this.#database
+        .prepare(
+          `UPDATE durable_workflow_executions
+           SET output_bytes_observed = output_bytes_observed + ?,
+             revision = revision + 1, updated_at = ? WHERE run_id = ?`,
+        )
+        .run(outputBytes, evidence.observedAt, evidence.runId);
+      if (next === "succeeded")
+        this.#releaseReadySteps(evidence.runId, evidence.observedAt);
+      this.#audit.append({
+        eventType: "workflow.step_state_changed",
+        subjectId: evidence.runId,
+        payload: {
+          evidenceId: evidence.id,
+          from: current.lifecycle,
+          stepId: evidence.stepId,
+          to: next,
+        },
+      });
+    });
+  }
+
+  markDurableWorkflowStepUnknown(
+    runId: string,
+    stepId: string,
+    updatedAt: string,
+    reason: string,
+  ): void {
+    this.#assertWritable();
+    this.#transaction(() => {
+      const current = this.#findDurableWorkflowStep(runId, stepId);
+      if (!current || current.lifecycle !== "running") {
+        throw new Error("Only a running durable step can become unknown");
+      }
+      this.#database
+        .prepare(
+          `UPDATE durable_workflow_steps SET lifecycle = 'unknown',
+             revision = revision + 1, terminal_reason = ?, updated_at = ?
+           WHERE run_id = ? AND step_id = ? AND lifecycle = 'running'`,
+        )
+        .run(reason, updatedAt, runId, stepId);
+      this.#database
+        .prepare(
+          `UPDATE durable_workflow_executions SET lifecycle = 'blocked',
+             revision = revision + 1, terminal_reason = ?, updated_at = ?
+           WHERE run_id = ? AND lifecycle = 'running'`,
+        )
+        .run(reason, updatedAt, runId);
+      this.#audit.append({
+        eventType: "workflow.step_state_changed",
+        subjectId: runId,
+        payload: { from: "running", reason, stepId, to: "unknown" },
+      });
+    });
+  }
+
   updateRunStatus(
     runId: string,
     nextStatus: ExecutionRun["status"],
@@ -675,6 +1278,46 @@ export class PersistenceStore {
             },
           });
         }
+        const runningSteps = this.#database
+          .prepare(
+            `SELECT step_id FROM durable_workflow_steps
+             WHERE run_id = ? AND lifecycle = 'running'`,
+          )
+          .all(row.id) as { step_id: string }[];
+        for (const step of runningSteps) {
+          this.#database
+            .prepare(
+              `UPDATE durable_workflow_steps
+               SET lifecycle = 'unknown', revision = revision + 1,
+                 terminal_reason = 'runtime_restart_state_uncertain', updated_at = ?
+               WHERE run_id = ? AND step_id = ? AND lifecycle = 'running'`,
+            )
+            .run(updatedAt, row.id, step.step_id);
+          this.#audit.append({
+            eventType: "workflow.step_state_changed",
+            subjectId: row.id,
+            payload: {
+              from: "running",
+              reason: "runtime_restart_state_uncertain",
+              stepId: step.step_id,
+              to: "unknown",
+            },
+          });
+        }
+        this.#database
+          .prepare(
+            `UPDATE durable_workflow_executions
+             SET lifecycle = 'blocked', revision = revision + 1,
+               terminal_reason = ?, updated_at = ?
+             WHERE run_id = ? AND lifecycle IN ('prepared', 'running')`,
+          )
+          .run(
+            runningSteps.length > 0
+              ? "runtime_restart_state_uncertain"
+              : "runtime_restart_before_next_dispatch",
+            updatedAt,
+            row.id,
+          );
         const result = update.run(updatedAt, row.id);
         if (result.changes !== 1) continue;
         recovered.push(row.id);
@@ -861,38 +1504,109 @@ export class PersistenceStore {
     this.#assertWritable();
     const evidence = stepEvidenceSchema.parse(input);
     this.#transaction(() => {
-      this.#database
-        .prepare(
-          `INSERT INTO step_evidence(
-            id, run_id, plan_id, step_id, capability_id, subsystem,
-            capability_version, outcome, observed_at, summary, output_digest
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          evidence.id,
-          evidence.runId,
-          evidence.planId,
-          evidence.stepId,
-          evidence.capabilityId,
-          evidence.subsystem,
-          evidence.capabilityVersion,
-          evidence.outcome,
-          evidence.observedAt,
-          evidence.summary,
-          evidence.outputDigest ?? null,
-        );
-      this.#audit.append({
-        eventType: "execution.evidence_recorded",
-        subjectId: evidence.runId,
-        payload: {
-          capabilityId: evidence.capabilityId,
-          evidenceId: evidence.id,
-          outcome: evidence.outcome,
-          planId: evidence.planId,
-          stepId: evidence.stepId,
-        },
-      });
+      this.#insertEvidence(evidence);
     });
+  }
+
+  #insertEvidence(evidence: StepEvidence): void {
+    this.#database
+      .prepare(
+        `INSERT INTO step_evidence(
+          id, run_id, plan_id, step_id, capability_id, subsystem,
+          capability_version, outcome, observed_at, summary, output_digest
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        evidence.id,
+        evidence.runId,
+        evidence.planId,
+        evidence.stepId,
+        evidence.capabilityId,
+        evidence.subsystem,
+        evidence.capabilityVersion,
+        evidence.outcome,
+        evidence.observedAt,
+        evidence.summary,
+        evidence.outputDigest ?? null,
+      );
+    this.#audit.append({
+      eventType: "execution.evidence_recorded",
+      subjectId: evidence.runId,
+      payload: {
+        capabilityId: evidence.capabilityId,
+        evidenceId: evidence.id,
+        outcome: evidence.outcome,
+        planId: evidence.planId,
+        stepId: evidence.stepId,
+      },
+    });
+  }
+
+  #findDurableWorkflowStep(
+    runId: string,
+    stepId: string,
+  ): DurableWorkflowStep | undefined {
+    const row = this.#database
+      .prepare(
+        "SELECT * FROM durable_workflow_steps WHERE run_id = ? AND step_id = ?",
+      )
+      .get(runId, stepId) as Record<string, unknown> | undefined;
+    return row ? rowToWorkflowStep(row) : undefined;
+  }
+
+  #validateDurableWorkflowBinding(workflow: DurableWorkflowExecution): void {
+    const binding = this.#database
+      .prepare(
+        `SELECT runs.plan_id, runs.plan_digest,
+           COALESCE(requests.workspace_id, '00000000-0000-4000-8000-000000000000') AS workspace_id,
+           contexts.context_id, contexts.revision, contexts.digest
+         FROM execution_runs AS runs
+         JOIN orchestration_requests AS requests ON requests.id = runs.request_id
+         JOIN project_context_snapshots AS contexts
+           ON contexts.request_id = runs.request_id
+         WHERE runs.id = ?`,
+      )
+      .get(workflow.runId) as Record<string, unknown> | undefined;
+    if (
+      !binding ||
+      binding.plan_id !== workflow.workflowId ||
+      binding.plan_digest !== workflow.planDigest ||
+      binding.workspace_id !== workflow.workspaceId ||
+      binding.context_id !== workflow.projectContextId ||
+      binding.revision !== workflow.projectContextRevision ||
+      binding.digest !== workflow.projectContextDigest
+    ) {
+      throw new Error("Durable workflow binding is inconsistent");
+    }
+  }
+
+  #releaseReadySteps(runId: string, updatedAt: string): void {
+    const pending = this.#database
+      .prepare(
+        `SELECT * FROM durable_workflow_steps
+         WHERE run_id = ? AND lifecycle = 'pending'`,
+      )
+      .all(runId) as Record<string, unknown>[];
+    for (const row of pending) {
+      const step = rowToWorkflowStep(row);
+      const dependencies = step.dependencies.map((dependency) =>
+        this.#findDurableWorkflowStep(runId, dependency),
+      );
+      if (
+        dependencies.length === step.dependencies.length &&
+        dependencies.every(
+          (dependency) => dependency?.lifecycle === "succeeded",
+        )
+      ) {
+        this.#database
+          .prepare(
+            `UPDATE durable_workflow_steps SET lifecycle = 'ready',
+               revision = revision + 1, updated_at = ?
+             WHERE run_id = ? AND step_id = ? AND lifecycle = 'pending'`,
+          )
+          .run(updatedAt, runId, step.stepId);
+      }
+    }
   }
 
   saveProviderExecutionAttempt(
@@ -1552,6 +2266,40 @@ export class PersistenceStore {
     });
   }
 
+  pruneExpiredDurableWorkflows(workspaceId: string, now: string): number {
+    this.#assertWritable();
+    if (!workspaceId || !Number.isFinite(Date.parse(now))) {
+      throw new Error("Invalid durable workflow retention boundary");
+    }
+    return this.#transaction(() => {
+      const expired = this.#database
+        .prepare(
+          `SELECT run_id FROM durable_workflow_executions
+           WHERE workspace_id = ? AND expires_at <= ? AND lifecycle != 'running'`,
+        )
+        .all(workspaceId, now) as { run_id: string }[];
+      for (const row of expired) {
+        this.#database
+          .prepare("DELETE FROM durable_workflow_steps WHERE run_id = ?")
+          .run(row.run_id);
+        this.#database
+          .prepare("DELETE FROM durable_workflow_executions WHERE run_id = ?")
+          .run(row.run_id);
+      }
+      if (expired.length > 0) {
+        this.#audit.append({
+          eventType: "privacy.workspace_data_deleted",
+          subjectId: workspaceId,
+          payload: {
+            deletedDurableWorkflows: expired.length,
+            retention: true,
+          },
+        });
+      }
+      return expired.length;
+    });
+  }
+
   getWorkspaceRetention(workspaceId: string): number {
     this.#assertOpen();
     if (!workspaceId) throw new Error("Invalid workspace id");
@@ -1616,6 +2364,8 @@ export class PersistenceStore {
       if (count.count === 0) return 0;
       const bindings = [workspaceId, cutoff];
       for (const [table, column, subquery] of [
+        ["durable_workflow_steps", "run_id", runs],
+        ["durable_workflow_executions", "run_id", runs],
         ["memory_entries", "source_run_id", runs],
         ["provider_execution_attempts", "run_id", runs],
         ["provider_checkpoints", "run_id", runs],
@@ -1675,6 +2425,14 @@ export class PersistenceStore {
       evaluations: rows("plan_evaluations", `plan_id IN (${planFilter})`),
       approvals: rows("approvals", `plan_id IN (${planFilter})`),
       runs: rows("execution_runs", `request_id IN (${requestFilter})`),
+      durableWorkflows: rows(
+        "durable_workflow_executions",
+        `run_id IN (${runFilter})`,
+      ),
+      durableWorkflowSteps: rows(
+        "durable_workflow_steps",
+        `run_id IN (${runFilter})`,
+      ),
       evidence: rows("step_evidence", `run_id IN (${runFilter})`),
       providerExecutionAttempts: rows(
         "provider_execution_attempts",

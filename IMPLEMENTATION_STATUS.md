@@ -1,6 +1,6 @@
 # Estado de implementación
 
-Última actualización: 2026-09-22
+Última actualización: 2026-09-24
 
 Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 `PLANNED` no iniciado, `BLOCKED` requiere una decisión o dependencia externa.
@@ -19,11 +19,41 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 | P3-0.1 — revisión técnica de ADRs   | DONE    | ADR-0012 a ADR-0015 aceptados con correcciones documentales; implementación continúa pendiente.                    |
 | P3-A1 — Project Context mínimo      | DONE    | Snapshot v1 determinista, builder, persistencia privada/estándar, Strategy, threat model y tests verificados.      |
 | P3-D0 — Execution Gateway contract  | DONE    | Contrato v1, backend local supervisado, Policy/Approval/Context bindings, límites y tests verificados.             |
-| P3 — evolución arquitectónica       | PARTIAL | P3-A1 y P3-D0 completos; P3-E1 y fases posteriores no comenzaron.                                                  |
+| P3-E1 — Durable Workflow State      | DONE    | Estado/steps SQLite, restart conservador, budgets/approvals y resume seguro verificados.                           |
+| P3 — evolución arquitectónica       | PARTIAL | P3-A1, P3-D0 y P3-E1 completos; P3-B1 y fases posteriores no comenzaron.                                           |
+
+## P3-E1 — Durable Workflow State (2026-09-24)
+
+Estado: `DONE`. P3-B1 no comenzó.
+
+- migration `0009_durable_workflow_state` agrega ejecuciones y steps
+  normalizados con lifecycle/revisión, dependencias y referencias a
+  plan/Context/approval/attempt/evidence;
+- Runtime persiste `ready → running` antes del dispatch y el terminal junto con
+  StepEvidence; un resultado ausente o inválido queda `unknown` y bloquea el
+  workflow sin retry automático;
+- startup recovery conserva terminales, transforma dispatches interrumpidos en
+  `unknown` y mantiene steps nunca despachados reanudables solo cuando no falta
+  un output efímero autoritativo;
+- `resumeRunId` está probado con cierre/reapertura real de SQLite y nueva
+  instancia de Runtime; la UI no ofrece todavía una acción de resume;
+- budgets no se reinician: quedan dispatch IDs, provider calls y output bytes;
+  approvals consumidas permanecen ligadas a su step y nunca se regeneran;
+- private mode no crea durable workflow state ni snapshots, por lo que no
+  promete resume tras cierre; retención y purge incluyen el nuevo estado;
+- `WorkflowExecutionSnapshot` permanece pendiente: materializarlo sin outputs
+  durables legítimos duplicaría fuentes de verdad. `ProviderRecoveryCheckpoint`
+  continúa separado y ADR-0012/0013/0014 no fueron implementados.
+
+Evidencia completa en
+[`docs/product/p3-e1-durable-workflow-report.md`](docs/product/p3-e1-durable-workflow-report.md).
+M5 y M7 permanecen `PARTIAL`; Reference Provider continúa siendo el único
+provider ejecutable.
 
 ## P3-D0 — Execution Gateway Contract (2026-09-22)
 
-Estado: `DONE`. P3-E1 no comenzó.
+Estado: `DONE`. Al cerrar esta fase, P3-E1 todavía no había comenzado; su estado
+actual se registra arriba.
 
 - `ExecutionBackendManifest`, `ExecutionRequest`, `ExecutionPreparation` y
   `ExecutionResult` forman el contrato v1 y exponen capabilities, acceso host,
@@ -318,7 +348,8 @@ sistemas usados durante la investigación:
 
 - `DONE` P3-A1: Project Context mínimo, versionado por workspace;
 - `DONE` P3-D0: contrato de Execution Gateway sobre ejecución supervisada;
-- `PLANNED` P3-E1: estado durable de workflows y snapshots confirmados;
+- `DONE` P3-E1: estado durable de workflows, restart conservador y resume
+  acotado; snapshots confirmados siguen pendientes;
 - `PLANNED` P3-B1: perfiles declarativos por capabilities, permisos y budgets;
 - `PLANNED` P3-B2: fan-out/fan-in con concurrencia, cancelación, budget
   agregado, evaluación y provenance;

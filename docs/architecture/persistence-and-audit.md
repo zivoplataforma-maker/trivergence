@@ -38,6 +38,10 @@ StepEvidence ─────────┘          │
 - `workspace_retention`: días de retención elegidos explícitamente;
 - `project_context_snapshots`: manifest v1 inmutable de referencias/digests por
   workspace, request y revisión, con expiración; no existe fila en private mode;
+- `durable_workflow_executions`: binding versionado de run/plan/Project Context,
+  lifecycle, revisión, expiración y contabilidad monotónica de budgets;
+- `durable_workflow_steps`: dependencias y lifecycle por step con referencias a
+  approval, provider attempt y evidence; no almacena outputs completos;
 - `audit_events`: metadatos acotados, secuencia y hashes anterior/actual;
 - `schema_migrations`: versión, checksum y fecha de aplicación.
 
@@ -59,6 +63,17 @@ efímeros: su contenido debe persistir para poder ser recordado. Se almacena una
 sola vez en `memory_entries`; audit events y `step_evidence` conservan
 únicamente identidades, tamaños y digests. Recall valida TTL, digest, provenance
 y budgets.
+
+El estado durable de workflow solo existe en modo estándar. Una transición a
+`running` se persiste antes del dispatch y el terminal se escribe en la misma
+transacción que `StepEvidence`. Tras restart, todo step que cruzó esa frontera
+sin terminal queda `unknown`; el workflow queda `blocked` y no hay retry
+automático. Un step nunca despachado puede reanudarse si sus inputs siguen
+verificables. Los outputs efímeros no se copian para fabricar resume.
+
+Este estado mutable y revisionado no es un `WorkflowExecutionSnapshot`. El
+snapshot inmutable de ADR-0015 continúa pendiente y `ProviderRecoveryCheckpoint`
+sigue siendo material remoto separado.
 
 ## Apertura y estado seguro
 
@@ -115,6 +130,8 @@ Las pruebas cubren:
   memoria M6.
 - persistencia/reapertura de Project Context estándar, ausencia durable en modo
   privado, expiración y exportación vinculada al workspace.
+- close/reopen de workflow, bindings cross-workspace, transiciones atómicas,
+  UNKNOWN tras restart, prevención de dispatch duplicado, budgets y retención.
 
 La decisión tecnológica y su vía de sustitución están en
 [ADR-0003](adr/0003-node-sqlite-persistence-boundary.md).

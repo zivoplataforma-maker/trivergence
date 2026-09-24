@@ -127,3 +127,23 @@ puede acceder a recursos del usuario que admita el sistema operativo y puede
 abrir red sin que el supervisor pruebe el destino real. Los destinos declarados,
 Policy, approvals y private mode reducen el riesgo lógico, pero aislamiento y
 network enforcement reales requieren un backend futuro distinto.
+
+## Durable Workflow State (P3-E1)
+
+- **tampering/cross-workspace substitution:** cada workflow se liga a
+  run/plan/context/workspace/digests y falla cerrado si no coincide con las
+  fuentes autoritativas;
+- **forged terminal/replay:** revisiones y transiciones compare-and-set impiden
+  saltos y dispatch duplicado; `succeeded` exige que todos los steps tengan
+  terminal y evidence;
+- **crash/restart race:** `running` se persiste antes de dispatch. Sin terminal
+  verificable se conserva `unknown`, se bloquean dependencias y no hay retry;
+- **approval replay/budget reset:** approval/attempt quedan referenciados y la
+  contabilidad monotónica sobrevive reapertura; resume no crea saldo nuevo;
+- **checkpoint confusion:** el estado durable solo referencia attempts. Nunca
+  interpreta `ProviderRecoveryCheckpoint` como workflow state o snapshot;
+- **retention/private leakage:** private mode no crea filas durables; modo
+  estándar expira y purga por workspace sin afirmar borrado forense;
+- **SQLite corrupto:** constraints, foreign keys, bindings y la apertura segura
+  hacen fallar cerrado inconsistencias detectables. La manipulación host-level
+  fuera de esas garantías sigue siendo riesgo residual.

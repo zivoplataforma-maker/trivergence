@@ -337,21 +337,22 @@ extraen cookies, tokens ni almacenes internos del navegador. Una sesión
 autenticada solo puede utilizarse mediante una interfaz autorizada que preserve
 control del usuario y aislamiento.
 
-### 12. Durable Workflow Runtime — `NEXT/PLANNED`
+### 12. Durable Workflow Runtime — `CURRENT/CORE` mínimo
 
-Los workflows evolucionarán de pipelines locales a ejecuciones durables capaces
-de:
+P3-E1 implementa estado durable local-first para:
 
 - persistir estado entre pasos;
-- pausar por aprobación, input o evento externo;
-- reanudar sin duplicar efectos;
-- sobrevivir reinicio/crash cuando la evidencia lo permita;
+- reanudar steps nunca despachados cuando sus inputs siguen verificables;
+- sobrevivir reinicio/crash bloqueando toda ejecución incierta;
 - representar `remote_state_unknown`;
-- consultar estado de operaciones cuando exista capability;
-- cancelar ramas;
 - conservar budgets/provenance;
-- establecer timeouts y expiración;
+- conservar approvals/attempt/evidence por referencia;
+- aplicar expiración y private mode;
 - mostrar al usuario dónde y por qué está detenido un workflow.
+
+Pausas por input/evento, consulta remota general, cancelación de ramas y
+paralelismo siguen `NEXT/PLANNED`. Un output efímero perdido no se reconstruye
+ni se copia: si una dependencia lo necesita, resume falla cerrado.
 
 Un futuro `WorkflowExecutionSnapshot` pertenecerá a la orquestación y no
 implicará recovery remoto. Es un manifest inmutable de referencias y digests de

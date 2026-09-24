@@ -699,6 +699,79 @@ export const executionRunSchema = z.object({
 });
 export type ExecutionRun = z.infer<typeof executionRunSchema>;
 
+export const workflowLifecycleSchema = z.enum([
+  "prepared",
+  "running",
+  "blocked",
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
+export type WorkflowLifecycle = z.infer<typeof workflowLifecycleSchema>;
+
+export const workflowStepLifecycleSchema = z.enum([
+  "pending",
+  "ready",
+  "running",
+  "blocked",
+  "unknown",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "timed_out",
+]);
+export type WorkflowStepLifecycle = z.infer<typeof workflowStepLifecycleSchema>;
+
+export const durableWorkflowBudgetSchema = z.object({
+  limitsDigest: sha256DigestSchema,
+  dispatchedStepIds: z.array(z.string().min(1).max(80)).max(256),
+  providerCallsUsed: z.number().int().nonnegative().max(1_000_000),
+  outputBytesObserved: z.number().int().nonnegative().max(1_073_741_824),
+});
+export type DurableWorkflowBudget = z.infer<typeof durableWorkflowBudgetSchema>;
+
+export const durableWorkflowExecutionSchema = z.object({
+  schemaVersion: z.literal("1"),
+  runId: z.string().uuid(),
+  workflowId: z.string().uuid(),
+  workflowDefinitionVersion: z.string().min(1).max(40),
+  planDigest: sha256DigestSchema,
+  projectContextId: z.string().uuid(),
+  projectContextRevision: z.number().int().positive(),
+  projectContextDigest: sha256DigestSchema,
+  workspaceId: z.string().uuid(),
+  lifecycle: workflowLifecycleSchema,
+  revision: z.number().int().positive(),
+  budget: durableWorkflowBudgetSchema,
+  terminalReason: z.string().min(1).max(500).optional(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+export type DurableWorkflowExecution = z.infer<
+  typeof durableWorkflowExecutionSchema
+>;
+
+export const durableWorkflowStepSchema = z.object({
+  runId: z.string().uuid(),
+  planId: z.string().uuid(),
+  stepId: z.string().min(1).max(80),
+  capabilityId: capabilityIdSchema,
+  dependencies: z.array(z.string().min(1).max(80)).max(32),
+  lifecycle: workflowStepLifecycleSchema,
+  revision: z.number().int().positive(),
+  dispatchStarted: z.boolean(),
+  effectClass: operationEffectClassSchema,
+  approvalId: z.string().uuid().optional(),
+  attemptId: z.string().uuid().optional(),
+  evidenceId: z.string().uuid().optional(),
+  outputDigest: sha256DigestSchema.optional(),
+  terminalReason: z.string().min(1).max(500).optional(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export type DurableWorkflowStep = z.infer<typeof durableWorkflowStepSchema>;
+
 export const stepEvidenceSchema = z.object({
   id: z.string().uuid(),
   runId: z.string().uuid(),
@@ -1331,6 +1404,9 @@ export const auditEventTypeSchema = z.enum([
   "execution.run_created",
   "execution.evidence_recorded",
   "execution.run_status_changed",
+  "workflow.state_created",
+  "workflow.state_changed",
+  "workflow.step_state_changed",
   "execution.outcome_evaluated",
   "provider.checkpoint_recorded",
   "provider.checkpoint_consumed",

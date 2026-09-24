@@ -4,6 +4,8 @@ import {
   actionRequestSchema,
   artifactIntegritySchema,
   diagnosticsSchema,
+  durableWorkflowExecutionSchema,
+  durableWorkflowStepSchema,
   executionRunSchema,
   orchestrationRequestSchema,
   orchestrationPreviewSchema,
@@ -297,5 +299,54 @@ describe("shared contracts", () => {
     expect(() =>
       providerConfigurationEntrySchema.parse({ ...blocked, blockers: [] }),
     ).toThrow(/explicit reason/u);
+  });
+
+  it("validates bounded versioned durable workflow state", () => {
+    const workflow = durableWorkflowExecutionSchema.parse({
+      schemaVersion: "1",
+      runId: "40000000-0000-4000-8000-000000000001",
+      workflowId: "20000000-0000-4000-8000-000000000001",
+      workflowDefinitionVersion: "1",
+      planDigest: "a".repeat(64),
+      projectContextId: "10000000-0000-4000-8000-000000000001",
+      projectContextRevision: 1,
+      projectContextDigest: "b".repeat(64),
+      workspaceId: "60000000-0000-4000-8000-000000000001",
+      lifecycle: "running",
+      revision: 2,
+      budget: {
+        limitsDigest: "c".repeat(64),
+        dispatchedStepIds: ["step-1"],
+        providerCallsUsed: 1,
+        outputBytesObserved: 128,
+      },
+      createdAt: "2026-09-22T12:00:00.000Z",
+      updatedAt: "2026-09-22T12:01:00.000Z",
+      expiresAt: "2026-10-22T12:00:00.000Z",
+    });
+    expect(workflow.schemaVersion).toBe("1");
+    expect(workflow.budget.dispatchedStepIds).toEqual(["step-1"]);
+  });
+
+  it("keeps UNKNOWN distinct from terminal workflow step states", () => {
+    const base = {
+      runId: "40000000-0000-4000-8000-000000000001",
+      planId: "20000000-0000-4000-8000-000000000001",
+      stepId: "step-1",
+      capabilityId: "runtime.test.execute",
+      dependencies: [],
+      revision: 3,
+      dispatchStarted: true,
+      effectClass: "side_effectful" as const,
+      createdAt: "2026-09-22T12:00:00.000Z",
+      updatedAt: "2026-09-22T12:01:00.000Z",
+    };
+    expect(
+      durableWorkflowStepSchema.parse({ ...base, lifecycle: "unknown" })
+        .lifecycle,
+    ).toBe("unknown");
+    expect(() =>
+      durableWorkflowStepSchema.parse({ ...base, lifecycle: "completed" }),
+    ).toThrow();
   });
 });

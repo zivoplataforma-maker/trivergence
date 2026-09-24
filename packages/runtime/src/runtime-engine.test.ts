@@ -1,13 +1,17 @@
 import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import type {
-  ActionRequest,
-  ExecutionDescriptor,
-  OrchestrationPreview,
-  PlannedStep,
-  PolicyProfile,
-  ProjectContextSnapshot,
-  ProviderStreamEvent,
+import {
+  classifyOperationEffect,
+  type ActionRequest,
+  type ExecutionDescriptor,
+  type OrchestrationPreview,
+  type PlannedStep,
+  type PolicyProfile,
+  type ProjectContextSnapshot,
+  type ProviderStreamEvent,
 } from "@trivergence/contracts";
 import { canonicalizeJson } from "@trivergence/orchestration-engine";
 import { PersistenceStore } from "@trivergence/persistence";
@@ -441,7 +445,326 @@ const makeProviderPreview = (
   };
 };
 
+const makeStandardPreview = (): OrchestrationPreview => {
+  const base = makePreview("observer", action("safe", ["read"]));
+  const workspaceId = "90000000-0000-4000-8000-000000000009";
+  return {
+    ...base,
+    request: { ...base.request, workspaceId, privacyMode: "standard" },
+    projectContext: projectContext(
+      base.request.id,
+      "observer",
+      "runtime.test.execute",
+      "standard",
+      workspaceId,
+    ),
+  };
+};
+
+const seedDurableRun = (
+  store: PersistenceStore,
+  preview: OrchestrationPreview,
+  runId: string,
+) => {
+  const now = new Date(NOW).toISOString();
+  store.createRun({
+    id: runId,
+    requestId: preview.request.id,
+    planId: preview.plan.id,
+    registrySnapshotId: preview.registrySnapshot.id,
+    planDigest: preview.planIntegrity.digest,
+    status: "planned",
+    createdAt: now,
+    updatedAt: now,
+  });
+  store.createDurableWorkflow(
+    {
+      schemaVersion: "1",
+      runId,
+      workflowId: preview.plan.id,
+      workflowDefinitionVersion: preview.plan.plannerVersion,
+      planDigest: preview.planIntegrity.digest,
+      projectContextId: preview.projectContext.id,
+      projectContextRevision: preview.projectContext.revision,
+      projectContextDigest: preview.projectContext.digest,
+      workspaceId: preview.projectContext.workspace.id,
+      lifecycle: "prepared",
+      revision: 1,
+      budget: {
+        limitsDigest: sha256(
+          canonicalizeJson(preview.projectContext.budget.limits),
+        ),
+        dispatchedStepIds: [],
+        providerCallsUsed: 0,
+        outputBytesObserved: 0,
+      },
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: "2026-09-07T12:00:00.000Z",
+    },
+    preview.plan.steps.map((step) => ({
+      runId,
+      planId: preview.plan.id,
+      stepId: step.id,
+      capabilityId: step.capabilityId,
+      dependencies: step.dependsOn,
+      lifecycle: step.dependsOn.length === 0 ? "ready" : "pending",
+      revision: 1,
+      dispatchStarted: false,
+      effectClass: classifyOperationEffect(step.action),
+      createdAt: now,
+      updatedAt: now,
+    })),
+  );
+  store.updateRunStatus(runId, "running", now);
+  store.updateDurableWorkflowLifecycle(runId, "running", now);
+};
+
 describe("RuntimeEngine", () => {
+  it("persists a standard workflow lifecycle and confirmed evidence atomically", async () => {
+    const preview = makeStandardPreview();
+    const output = { durable: true };
+    const fixture = runtimeFixture(
+      preview,
+      new FakeDispatcher({
+        outcome: "succeeded",
+        summary: "Durable step completed",
+        output,
+        outputDigest: sha256(canonicalizeJson(output)),
+      }),
+    );
+
+    const result = await fixture.runtime.execute(preview);
+    expect(fixture.store.findDurableWorkflow(result.runId!)).toMatchObject({
+      lifecycle: "succeeded",
+      budget: { outputBytesObserved: canonicalizeJson(output).length },
+      projectContextDigest: preview.projectContext.digest,
+    });
+    expect(fixture.store.listDurableWorkflowSteps(result.runId!)).toEqual([
+      expect.objectContaining({
+        lifecycle: "succeeded",
+        evidenceId: expect.any(String),
+        outputDigest: sha256(canonicalizeJson(output)),
+      }),
+    ]);
+    fixture.store.close();
+  });
+
+  it("counts observed bytes even when a dispatcher exceeds the workflow budget", async () => {
+    const preview = makeStandardPreview();
+    const output = { text: "x".repeat(65_536) };
+    const observedBytes = Buffer.byteLength(canonicalizeJson(output), "utf8");
+    const fixture = runtimeFixture(
+      preview,
+      new FakeDispatcher({
+        outcome: "succeeded",
+        summary: "Oversized result",
+        output,
+        outputDigest: sha256(canonicalizeJson(output)),
+      }),
+    );
+    const result = await fixture.runtime.execute(preview);
+    expect(result.status).toBe("failed");
+    expect(
+      fixture.store.findDurableWorkflow(result.runId!)?.budget
+        .outputBytesObserved,
+    ).toBe(observedBytes);
+    expect(
+      fixture.store.listDurableWorkflowSteps(result.runId!)[0]?.lifecycle,
+    ).toBe("failed");
+    fixture.store.close();
+  });
+
+  it("does not create durable workflow state in private mode", async () => {
+    const preview = makePreview("observer", action("safe", ["read"]));
+    const fixture = runtimeFixture(
+      preview,
+      new FakeDispatcher({ outcome: "succeeded", summary: "Private step" }),
+    );
+    const result = await fixture.runtime.execute(preview);
+    expect(fixture.store.findDurableWorkflow(result.runId!)).toBeUndefined();
+    fixture.store.close();
+  });
+
+  it("resumes a never-dispatched durable step after restart", async () => {
+    const preview = makeStandardPreview();
+    const dispatcher = new FakeDispatcher({
+      outcome: "succeeded",
+      summary: "Resumed safely",
+    });
+    const fixture = runtimeFixture(preview, dispatcher);
+    const runId = "91000000-0000-4000-8000-000000000001";
+    seedDurableRun(fixture.store, preview, runId);
+    expect(fixture.runtime.recoverOrphans()).toEqual([runId]);
+
+    const result = await fixture.runtime.execute(preview, {
+      resumeRunId: runId,
+    });
+    expect(result).toMatchObject({ status: "completed", runId });
+    expect(dispatcher.calls).toBe(1);
+    expect(fixture.store.findDurableWorkflow(runId)?.lifecycle).toBe(
+      "succeeded",
+    );
+    fixture.store.close();
+  });
+
+  it("reopens SQLite and a new Runtime instance before safe resume", async () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), "trivergence-durable-runtime-"),
+    );
+    try {
+      const path = join(directory, "workflow.db");
+      const preview = makeStandardPreview();
+      const first = PersistenceStore.open(path, { clock: () => new Date(NOW) });
+      first.persistPreview(preview);
+      const runId = "93000000-0000-4000-8000-000000000001";
+      seedDurableRun(first, preview, runId);
+      first.close();
+
+      const reopened = PersistenceStore.open(path, {
+        clock: () => new Date(NOW),
+      });
+      const dispatcher = new FakeDispatcher({
+        outcome: "succeeded",
+        summary: "Confirmed after restart",
+      });
+      const restartedRuntime = new RuntimeEngine({
+        persistence: reopened,
+        dispatchers: [dispatcher],
+        revalidate: validRevalidation,
+        evaluatePolicy,
+        sha256,
+        clock: () => new Date(NOW),
+        idFactory: () => "94000000-0000-4000-8000-000000000001",
+      });
+      expect(restartedRuntime.recoverOrphans()).toEqual([runId]);
+      expect(
+        await restartedRuntime.execute(preview, { resumeRunId: runId }),
+      ).toMatchObject({ status: "completed", runId });
+      expect(dispatcher.calls).toBe(1);
+      reopened.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("never retries a step whose dispatch became uncertain", async () => {
+    const preview = makeStandardPreview();
+    const dispatcher = new FakeDispatcher({
+      outcome: "succeeded",
+      summary: "Must not run",
+    });
+    const fixture = runtimeFixture(preview, dispatcher);
+    const runId = "92000000-0000-4000-8000-000000000001";
+    seedDurableRun(fixture.store, preview, runId);
+    fixture.store.startDurableWorkflowStep(
+      runId,
+      "step-1",
+      new Date(NOW).toISOString(),
+      false,
+    );
+    fixture.runtime.recoverOrphans();
+
+    expect(
+      await fixture.runtime.execute(preview, { resumeRunId: runId }),
+    ).toMatchObject({
+      status: "blocked",
+    });
+    expect(dispatcher.calls).toBe(0);
+    expect(fixture.store.listDurableWorkflowSteps(runId)[0]?.lifecycle).toBe(
+      "unknown",
+    );
+    fixture.store.close();
+  });
+
+  it("keeps a thrown durable dispatch UNKNOWN instead of inventing failure", async () => {
+    const preview = makeStandardPreview();
+    const dispatcher = new ContextDispatcher("runtime.test.execute", () => {
+      throw new Error("Result channel lost");
+    });
+    const fixture = runtimeFixture(preview, dispatcher);
+    const result = await fixture.runtime.execute(preview);
+    expect(result).toMatchObject({ status: "orphaned", evidenceCount: 0 });
+    expect(fixture.store.findDurableWorkflow(result.runId!)?.lifecycle).toBe(
+      "blocked",
+    );
+    expect(
+      fixture.store.listDurableWorkflowSteps(result.runId!)[0]?.lifecycle,
+    ).toBe("unknown");
+    expect(fixture.store.listEvidence(result.runId!)).toEqual([]);
+    fixture.store.close();
+  });
+
+  it("persists confirmed timeout and cancellation as terminal durable states", async () => {
+    const preview = makeStandardPreview();
+    const timeout = runtimeFixture(
+      preview,
+      new FakeDispatcher({ outcome: "timed_out", summary: "Timed out" }),
+    );
+    const timeoutResult = await timeout.runtime.execute(preview);
+    expect(
+      timeout.store.listDurableWorkflowSteps(timeoutResult.runId!)[0]
+        ?.lifecycle,
+    ).toBe("timed_out");
+    timeout.store.close();
+
+    const cancelled = runtimeFixture(
+      preview,
+      new FakeDispatcher({ outcome: "cancelled", summary: "Cancelled" }),
+    );
+    const cancelledResult = await cancelled.runtime.execute(preview);
+    expect(
+      cancelled.store.listDurableWorkflowSteps(cancelledResult.runId!)[0]
+        ?.lifecycle,
+    ).toBe("cancelled");
+    cancelled.store.close();
+  });
+
+  it("keeps unconfirmed process-tree termination uncertain without terminal evidence", async () => {
+    const preview = makeStandardPreview();
+    const fixture = runtimeFixture(
+      preview,
+      new FakeDispatcher({
+        outcome: "cancelled",
+        summary: "Termination request sent",
+        treeTerminationConfirmed: false,
+      }),
+    );
+    const result = await fixture.runtime.execute(preview);
+    expect(result).toMatchObject({ status: "orphaned", evidenceCount: 0 });
+    expect(
+      fixture.store.listDurableWorkflowSteps(result.runId!)[0]?.lifecycle,
+    ).toBe("unknown");
+    expect(fixture.store.listEvidence(result.runId!)).toEqual([]);
+    fixture.store.close();
+  });
+
+  it("preserves provider-call budgets and approval references", async () => {
+    const preview = makeProviderPreview("side_effectful");
+    const fixture = runtimeFixture(
+      preview,
+      new RemoteProviderDispatcher(() => ({
+        outcome: "succeeded",
+        remoteState: "succeeded",
+        summary: "Provider completed",
+      })),
+    );
+    const approval = fixture.runtime.requestApproval(preview, "step-1");
+    fixture.runtime.decideApproval(approval.id, "grant", "durability-test");
+    const result = await fixture.runtime.execute(preview, {
+      approvalIds: { "step-1": approval.id },
+    });
+    expect(fixture.store.findDurableWorkflow(result.runId!)).toMatchObject({
+      budget: { providerCallsUsed: 1, dispatchedStepIds: ["step-1"] },
+    });
+    expect(
+      fixture.store.listDurableWorkflowSteps(result.runId!)[0],
+    ).toMatchObject({
+      approvalId: approval.id,
+      attemptId: expect.any(String),
+    });
+    fixture.store.close();
+  });
   it("executes an allowed persisted step and records evidence", async () => {
     const preview = makePreview("observer", action("safe", ["read"]));
     const dispatcher = new FakeDispatcher({

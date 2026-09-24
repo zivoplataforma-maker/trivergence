@@ -154,6 +154,10 @@ export class DesktopWorkspaceCoordinator {
         workspaceId,
         new Date().toISOString(),
       );
+      this.persistence.pruneExpiredDurableWorkflows(
+        workspaceId,
+        new Date().toISOString(),
+      );
       this.persistence.pruneExpiredMemory(new Date().toISOString());
     }
     const root = new WorkspaceRoot({ id: workspaceId, path: canonicalPath });

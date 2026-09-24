@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import type {
+  DurableWorkflowExecution,
+  DurableWorkflowStep,
   ExecutionRun,
   OrchestrationPreview,
   ProjectContextSnapshot,
@@ -18,7 +20,11 @@ import {
   restoreBackup,
   validateBackup,
 } from "./index.js";
-import { migrateDatabase } from "./migrations.js";
+import {
+  latestSchemaVersion,
+  migrateDatabase,
+  migrations,
+} from "./migrations.js";
 
 const PLAN_DIGEST = "a".repeat(64);
 const SNAPSHOT_DIGEST = "b".repeat(64);
@@ -196,6 +202,55 @@ const evidence: StepEvidence = {
   outputDigest: "c".repeat(64),
 };
 
+const standardPreview = (
+  workspaceId = "60000000-0000-4000-8000-000000000001",
+): OrchestrationPreview => ({
+  ...preview,
+  request: { ...preview.request, workspaceId, privacyMode: "standard" },
+  projectContext: projectContext(preview.request.id, workspaceId, "standard"),
+});
+
+const durableRecords = (
+  durablePreview: OrchestrationPreview,
+  runId = run.id,
+): [DurableWorkflowExecution, DurableWorkflowStep] => [
+  {
+    schemaVersion: "1",
+    runId,
+    workflowId: durablePreview.plan.id,
+    workflowDefinitionVersion: "1",
+    planDigest: durablePreview.planIntegrity.digest,
+    projectContextId: durablePreview.projectContext.id,
+    projectContextRevision: durablePreview.projectContext.revision,
+    projectContextDigest: durablePreview.projectContext.digest,
+    workspaceId: durablePreview.projectContext.workspace.id,
+    lifecycle: "prepared",
+    revision: 1,
+    budget: {
+      limitsDigest: "9".repeat(64),
+      dispatchedStepIds: [],
+      providerCallsUsed: 0,
+      outputBytesObserved: 0,
+    },
+    createdAt: NOW,
+    updatedAt: NOW,
+    expiresAt: "2026-09-04T12:00:00.000Z",
+  },
+  {
+    runId,
+    planId: durablePreview.plan.id,
+    stepId: "step-1",
+    capabilityId: "system.diagnostics.read",
+    dependencies: [],
+    lifecycle: "ready",
+    revision: 1,
+    dispatchStarted: false,
+    effectClass: "read_only",
+    createdAt: NOW,
+    updatedAt: NOW,
+  },
+];
+
 const temporaryDirectories: string[] = [];
 
 const databasePath = () => {
@@ -211,6 +266,186 @@ afterEach(() => {
 });
 
 describe("PersistenceStore", () => {
+  it("reopens durable workflow state without resetting budget or provenance references", () => {
+    const path = databasePath();
+    const durablePreview = standardPreview();
+    const first = PersistenceStore.open(path, { clock: () => new Date(NOW) });
+    first.persistPreview(durablePreview);
+    first.createRun(run);
+    const [workflow, step] = durableRecords(durablePreview);
+    first.createDurableWorkflow(workflow, [step]);
+    first.updateRunStatus(run.id, "running", NOW);
+    first.updateDurableWorkflowLifecycle(run.id, "running", NOW);
+    first.startDurableWorkflowStep(run.id, "step-1", NOW, true);
+    first.close();
+
+    const reopened = PersistenceStore.open(path, {
+      clock: () => new Date(NOW),
+    });
+    expect(reopened.findDurableWorkflow(run.id)).toMatchObject({
+      projectContextDigest: durablePreview.projectContext.digest,
+      budget: { dispatchedStepIds: ["step-1"], providerCallsUsed: 1 },
+    });
+    expect(reopened.listDurableWorkflowSteps(run.id)[0]).toMatchObject({
+      lifecycle: "running",
+      dispatchStarted: true,
+    });
+    reopened.close();
+  });
+
+  it("fails closed on a cross-workspace or context-digest binding", () => {
+    const store = PersistenceStore.open(databasePath(), {
+      clock: () => new Date(NOW),
+    });
+    const durablePreview = standardPreview();
+    store.persistPreview(durablePreview);
+    store.createRun(run);
+    const [workflow, step] = durableRecords(durablePreview);
+    expect(() =>
+      store.createDurableWorkflow(
+        { ...workflow, workspaceId: "60000000-0000-4000-8000-000000000099" },
+        [step],
+      ),
+    ).toThrow(/binding is inconsistent/u);
+    expect(() =>
+      store.createDurableWorkflow(
+        { ...workflow, projectContextDigest: "8".repeat(64) },
+        [step],
+      ),
+    ).toThrow(/binding is inconsistent/u);
+    store.close();
+  });
+
+  it("rejects forged terminal step state after reopening SQLite", () => {
+    const path = databasePath();
+    const durablePreview = standardPreview();
+    const first = PersistenceStore.open(path, { clock: () => new Date(NOW) });
+    first.persistPreview(durablePreview);
+    first.createRun(run);
+    const [workflow, step] = durableRecords(durablePreview);
+    first.createDurableWorkflow(workflow, [step]);
+    first.close();
+
+    const raw = new DatabaseSync(path);
+    raw
+      .prepare(
+        `UPDATE durable_workflow_steps SET lifecycle = 'succeeded',
+       dispatch_started = 1 WHERE run_id = ?`,
+      )
+      .run(run.id);
+    raw.close();
+
+    const reopened = PersistenceStore.open(path, {
+      clock: () => new Date(NOW),
+    });
+    expect(() => reopened.findDurableWorkflow(run.id)).toThrow(
+      /step state is inconsistent/u,
+    );
+    reopened.close();
+  });
+
+  it("prevents duplicate dispatch accounting and premature workflow success", () => {
+    const store = PersistenceStore.open(databasePath(), {
+      clock: () => new Date(NOW),
+    });
+    const durablePreview = standardPreview();
+    store.persistPreview(durablePreview);
+    store.createRun(run);
+    const [workflow, step] = durableRecords(durablePreview);
+    store.createDurableWorkflow(workflow, [step]);
+    store.updateDurableWorkflowLifecycle(run.id, "running", NOW);
+    expect(() =>
+      store.updateDurableWorkflowLifecycle(run.id, "succeeded", NOW),
+    ).toThrow(/incomplete dependencies/u);
+    store.startDurableWorkflowStep(run.id, "step-1", NOW, false);
+    expect(() =>
+      store.startDurableWorkflowStep(run.id, "step-1", NOW, false),
+    ).toThrow(/not ready/u);
+    expect(store.findDurableWorkflow(run.id)?.budget.dispatchedStepIds).toEqual(
+      ["step-1"],
+    );
+    store.close();
+  });
+
+  it("commits run and workflow terminal states in one transaction", () => {
+    const store = PersistenceStore.open(databasePath(), {
+      clock: () => new Date(NOW),
+    });
+    const durablePreview = standardPreview();
+    store.persistPreview(durablePreview);
+    store.createRun(run);
+    const [workflow, step] = durableRecords(durablePreview);
+    store.createDurableWorkflow(workflow, [step]);
+    store.updateRunStatus(run.id, "running", NOW);
+    store.updateDurableWorkflowLifecycle(run.id, "running", NOW);
+    expect(() =>
+      store.finishDurableWorkflowRun(
+        run.id,
+        "completed",
+        "succeeded",
+        NOW,
+        "All steps done",
+      ),
+    ).toThrow(/incomplete dependencies/u);
+    expect(store.findRun(run.id)?.status).toBe("running");
+    expect(store.findDurableWorkflow(run.id)?.lifecycle).toBe("running");
+    store.startDurableWorkflowStep(run.id, "step-1", NOW, false);
+    store.recordDurableWorkflowStepTerminal(evidence, "succeeded", "Done", 0);
+    store.finishDurableWorkflowRun(
+      run.id,
+      "completed",
+      "succeeded",
+      NOW,
+      "All steps done",
+    );
+    expect(store.findRun(run.id)?.status).toBe("completed");
+    expect(store.findDurableWorkflow(run.id)?.lifecycle).toBe("succeeded");
+    store.close();
+  });
+
+  it("preserves UNKNOWN and blocks the workflow during restart recovery", () => {
+    const store = PersistenceStore.open(databasePath(), {
+      clock: () => new Date(NOW),
+    });
+    const durablePreview = standardPreview();
+    store.persistPreview(durablePreview);
+    store.createRun(run);
+    const [workflow, step] = durableRecords(durablePreview);
+    store.createDurableWorkflow(workflow, [step]);
+    store.updateRunStatus(run.id, "running", NOW);
+    store.updateDurableWorkflowLifecycle(run.id, "running", NOW);
+    store.startDurableWorkflowStep(run.id, "step-1", NOW, false);
+
+    expect(store.recoverRunningRuns(NOW)).toEqual([run.id]);
+    expect(store.findDurableWorkflow(run.id)?.lifecycle).toBe("blocked");
+    expect(store.listDurableWorkflowSteps(run.id)[0]?.lifecycle).toBe(
+      "unknown",
+    );
+    expect(() =>
+      store.updateDurableWorkflowLifecycle(run.id, "succeeded", NOW),
+    ).toThrow();
+    store.close();
+  });
+
+  it("retention removes expired non-running durable state but not active state", () => {
+    const workspaceId = "60000000-0000-4000-8000-000000000001";
+    const store = PersistenceStore.open(databasePath(), {
+      clock: () => new Date(NOW),
+    });
+    const durablePreview = standardPreview(workspaceId);
+    store.persistPreview(durablePreview);
+    store.createRun(run);
+    const [workflow, step] = durableRecords(durablePreview);
+    store.createDurableWorkflow(workflow, [step]);
+    expect(
+      store.pruneExpiredDurableWorkflows(
+        workspaceId,
+        "2026-09-05T12:00:00.000Z",
+      ),
+    ).toBe(1);
+    expect(store.findDurableWorkflow(run.id)).toBeUndefined();
+    store.close();
+  });
   it("does not durably persist Project Context in private mode", () => {
     const store = PersistenceStore.open(databasePath(), {
       clock: () => new Date(NOW),
@@ -489,6 +724,33 @@ describe("PersistenceStore", () => {
 });
 
 describe("migrations", () => {
+  it("upgrades an existing version 0008 database without losing data", () => {
+    const path = databasePath();
+    const legacy = new DatabaseSync(path);
+    migrateDatabase(legacy, migrations.slice(0, -1));
+    legacy.close();
+
+    const upgraded = PersistenceStore.open(path, {
+      clock: () => new Date(NOW),
+    });
+    expect(upgraded.health.mode).toBe("readwrite");
+    upgraded.persistPreview(standardPreview());
+    upgraded.createRun(run);
+    const [workflow, step] = durableRecords(standardPreview());
+    upgraded.createDurableWorkflow(workflow, [step]);
+    expect(upgraded.findDurableWorkflow(run.id)?.schemaVersion).toBe("1");
+    upgraded.close();
+
+    const verify = new DatabaseSync(path);
+    expect(
+      (
+        verify
+          .prepare("SELECT MAX(version) AS version FROM schema_migrations")
+          .get() as { version: string }
+      ).version,
+    ).toBe(latestSchemaVersion);
+    verify.close();
+  });
   it("rolls back a failed migration without recording it", () => {
     const database = new DatabaseSync(":memory:");
 
