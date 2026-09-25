@@ -179,3 +179,16 @@ control completo del proceso local. La configuración inicial se distribuye con
 la aplicación; perfiles dinámicos descargados o editables no forman parte de
 P3-B1. El output del Reference Provider puede seguir conteniendo instrucciones
 maliciosas, pero no modifica Registry, Policy, Approval o el plan.
+
+## Strategy Deliberation (P3-B2.0, diseño pendiente de implementación)
+
+La deliberación añade propuestas/críticas maliciosas, false consensus,
+sustitución de participante/modelo/ruta, evidencia fabricada, manipulación del
+evaluador, filtración entre context slices, budget amplification y síntesis
+maliciosa. Ningún output de IA adquiere autoridad; la independencia se calcula
+por identidad lógica y no por cantidad de rutas; toda llamada futura seguirá
+Planner → Policy/Approval → Runtime → Gateway.
+
+El análisis completo, incluidos private mode, UNKNOWN y riesgos residuales, está
+en [Threat model P3-B2](threat-model-p3-b2.md). P3-B2.0 no implementa controles
+ejecutables ni habilita providers.

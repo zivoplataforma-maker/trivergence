@@ -11,29 +11,34 @@ riesgo.
 
 ## Estado resumido
 
-| Hito                                   | Estado    |
-| -------------------------------------- | --------- |
-| M0 — especificación y riesgos          | `DONE`    |
-| M1 — foundation segura                 | `DONE`    |
-| M2 — kernel de orquestación            | `DONE`    |
-| M3 — Runtime, aprobaciones y auditoría | `DONE`    |
-| M4 — workspace/capacidades reales      | `DONE`    |
-| M5 — primer conector estructurado      | `PARTIAL` |
-| M6 — workflows, agentes y memoria      | `DONE`    |
-| M7 — beta local/distribución Windows   | `PARTIAL` |
-| P0 — auditoría transversal v1          | `DONE`    |
-| P1 — hardening transversal             | `DONE`    |
-| P2 — product hardening/preparación M5  | `DONE`    |
-| M5-B0 — semántica de recovery          | `DONE`    |
-| P3-0 — documentación y ADRs            | `DONE`    |
-| P3-0.1 — revisión técnica de ADRs      | `DONE`    |
-| P3-A1 — Project Context mínimo         | `DONE`    |
-| P3 — evolución arquitectónica          | `PARTIAL` |
+| Hito                                     | Estado            |
+| ---------------------------------------- | ----------------- |
+| M0 — especificación y riesgos            | `DONE`            |
+| M1 — foundation segura                   | `DONE`            |
+| M2 — kernel de orquestación              | `DONE`            |
+| M3 — Runtime, aprobaciones y auditoría   | `DONE`            |
+| M4 — workspace/capacidades reales        | `DONE`            |
+| M5 — primer conector estructurado        | `PARTIAL`         |
+| M6 — workflows, agentes y memoria        | `DONE`            |
+| M7 — beta local/distribución Windows     | `PARTIAL`         |
+| P0 — auditoría transversal v1            | `DONE`            |
+| P1 — hardening transversal               | `DONE`            |
+| P2 — product hardening/preparación M5    | `DONE`            |
+| M5-B0 — semántica de recovery            | `DONE`            |
+| P3-0 — documentación y ADRs              | `DONE`            |
+| P3-0.1 — revisión técnica de ADRs        | `DONE`            |
+| P3-A1 — Project Context mínimo           | `DONE`            |
+| P3-D0 — Execution Gateway                | `DONE`            |
+| P3-E1 — Durable Workflow State           | `DONE`            |
+| P3-B1 — Agent Profiles                   | `DONE`            |
+| P3-B2.0 — Strategy Deliberation Contract | `DONE` documental |
+| P3-B2 — deliberación y fan-out/fan-in    | `PARTIAL`         |
+| P3 — evolución arquitectónica            | `PARTIAL`         |
 
 M5 y M7 son puertas independientes. P3 no autoriza a marcar ninguno de ellos
 como completo.
 
-## M5-B0 — semántica de recovery
+## M5-B0 --- semántica de recovery
 
 Estado: `DONE` para el contrato interno. M5 continúa `PARTIAL`.
 
@@ -62,7 +67,7 @@ La falta de exact recovery deja de ser bloqueo técnico universal. Permanecen
 intactos los gates de autenticación, contrato, distribución, billing, custodia y
 evidencia real de cada capability.
 
-## M5 — primer conector estructurado
+## M5 --- primer conector estructurado
 
 Estado: `PARTIAL`.
 
@@ -72,16 +77,16 @@ siendo el único ejecutable.
 
 Antes de construir un adapter externo:
 
-1. la ruta exacta debe estar identificada;
-2. autenticación/custodia debe ser oficial y compatible con las reglas del
-   producto;
-3. contrato/términos aplicables deben ser suficientemente claros;
-4. distribución y billing deben estar entendidos;
-5. capabilities declaradas deben tener evidencia real;
-6. debe existir threat model de la ruta;
-7. el trust store solo puede ampliarse mediante el gate establecido.
+1.  la ruta exacta debe estar identificada;
+2.  autenticación/custodia debe ser oficial y compatible con las reglas del
+    producto;
+3.  contrato/términos aplicables deben ser suficientemente claros;
+4.  distribución y billing deben estar entendidos;
+5.  capabilities declaradas deben tener evidencia real;
+6.  debe existir threat model de la ruta;
+7.  el trust store solo puede ampliarse mediante el gate establecido.
 
-### M5-A — Codex
+### M5-A --- Codex
 
 Estado: `UNRESOLVED`.
 
@@ -90,7 +95,7 @@ Continúan pendientes madurez/soporte de producción, autenticación exacta,
 autorización contractual de terceros, distribución y evidencia de capabilities.
 Hasta nueva evidencia se declaran cero recovery capabilities externas.
 
-### M5-A2 — Claude
+### M5-A2 --- Claude
 
 Estado: `UNRESOLVED`.
 
@@ -99,7 +104,7 @@ turn. La ruta puede fallar seguro mediante UNKNOWN, pero autenticación,
 clasificación contractual del uso exacto, distribución y evidencia real siguen
 pendientes.
 
-### M5-A3 — Google/Gemini
+### M5-A3 --- Google/Gemini
 
 Estado global: `UNRESOLVED`.
 
@@ -114,7 +119,7 @@ Vertex AI con autenticación oficial de Cloud puede operar bajo el límite UNKNO
 sin exigir exact recovery, pero custodia, identidad/proyecto, billing, contrato
 y evidencia de capabilities siguen `UNRESOLVED`.
 
-### M5-B1 — autenticación y custodia de la primera ruta elegible
+### M5-B1 --- autenticación y custodia de la primera ruta elegible
 
 Estado: `BLOCKED` por evidencia externa.
 
@@ -133,14 +138,14 @@ autenticación. Alcance:
 
 **No construir ni habilitar el adapter en M5-B1.**
 
-### M5-B2 — spike aislado del primer adapter
+### M5-B2 --- spike aislado del primer adapter
 
 Estado: `PLANNED`, dependiente de M5-B1 y gates obligatorios.
 
 Debe ser mínimo, version-pinned, sin lógica de marca en Orchestration Engine,
 contra la suite de conformance y con trust store fail-closed. Solo una ruta.
 
-### M5-B3 — integración E2E y habilitación controlada
+### M5-B3 --- integración E2E y habilitación controlada
 
 Estado: `PLANNED`.
 
@@ -148,7 +153,7 @@ Requiere adapter aprobado, fixtures reales, policy/approval, budgets, recovery
 honesto, provenance, privacidad, UI de estados y E2E. Recién aquí puede existir
 un primer provider externo ejecutable.
 
-## M7 — beta local Windows
+## M7 --- beta local Windows
 
 Estado: `PARTIAL`.
 
@@ -164,17 +169,18 @@ Mantener como puertas pendientes:
 
 P3 no reduce estas exigencias.
 
-# P3 — evolución arquitectónica
+# P3 --- evolución arquitectónica
 
-Estado funcional: `PLANNED`. P3-0 documental está `DONE`; no implementa ninguna
-capacidad P3.
+Estado funcional: `PARTIAL`. P3-A1, P3-D0, P3-E1, P3-B1 y el contrato
+arquitectónico P3-B2.0 están `DONE`; P3-B2.1/B2.2 y las fases posteriores
+permanecen sin implementar.
 
 P3 convierte capacidades ya separadas en contexto, gateways, durabilidad y
-proyecciones reutilizables. No es un “big bang”. Cada subfase requiere orden
+proyecciones reutilizables. No es un "big bang". Cada subfase requiere orden
 explícita, threat model, budgets, tests y puerta de salida propia; cerrarla no
 autoriza automáticamente la siguiente.
 
-## P3-0 — documentación y ADRs
+## P3-0 --- documentación y ADRs
 
 Estado: `DONE` documental, 2026-09-22.
 
@@ -187,7 +193,7 @@ Estado: `DONE` documental, 2026-09-22.
 
 P3-0 registra deuda técnica, pero no modifica código ni habilita providers.
 
-## P3-0.1 — revisión técnica y aceptación de ADRs
+## P3-0.1 --- revisión técnica y aceptación de ADRs
 
 Estado: `DONE` documental, 2026-09-22. Implementaciones: `PENDING`.
 
@@ -205,7 +211,7 @@ Las cuatro decisiones están `ACCEPTED`, pero ninguna está implementada. Siguen
 pendientes los cambios de contratos, migraciones, harness y durable state. M5 y
 M7 permanecen `PARTIAL`; Reference Provider continúa como único ejecutable.
 
-## P3-A1 — Project Context mínimo
+## P3-A1 --- Project Context mínimo
 
 Estado: `DONE` (2026-09-22). Dependencia documental: P3-0.1 completado.
 
@@ -221,7 +227,7 @@ Strategy. Los límites se reflejan sin copiar consumo del Runtime; Registry,
 Memory, Audit y Evidence continúan como fuentes de verdad. Reference Provider
 continúa siendo el único provider ejecutable.
 
-## P3-D0 — contrato de Execution Gateway
+## P3-D0 --- contrato de Execution Gateway
 
 Estado: `DONE` (2026-09-22). Dependencias: P3-A1 y ADRs de effect/recovery
 aceptados pero todavía no implementados.
@@ -238,7 +244,7 @@ efecto planificada se consume mediante un puente explícito; Runtime conserva el
 lifecycle global y `treeTerminationConfirmed=false` permanece visible. Tool
 Gateway podrá reutilizar esta frontera sin crear otro supervisor.
 
-## P3-E1 — Durable Workflow State
+## P3-E1 --- Durable Workflow State
 
 Estado: `DONE` (2026-09-24). Dependencias: P3-A1, ADR-0011, ADR-0015 y
 persistence/Runtime actuales.
@@ -257,7 +263,7 @@ no se presenta como snapshot ni copia outputs, Memory, Context, Audit o
 Evidence. La reanudación está disponible en Runtime; la UI todavía no ofrece una
 acción para invocarla tras reabrir la aplicación.
 
-## P3-B1 — Agent Profiles declarativos
+## P3-B1 --- Agent Profiles declarativos
 
 Estado: `DONE` (2026-09-25). Dependencias: P3-A1 y P3-E1.
 
@@ -269,17 +275,65 @@ conserva las referencias exactas en plan y workflow durable. El perfil no
 concede Policy ni Approval, no selecciona provider y no crea budget nuevo.
 Reference Provider continúa siendo el único ejecutable. No hay fan-out/fan-in.
 
-## P3-B2 — fan-out/fan-in acotado
+## P3-B2 --- deliberación y fan-out/fan-in acotado
 
-Estado: `PLANNED`. Dependencias: P3-B1 y P3-E1 completos.
+Estado: `PARTIAL`. Dependencias base: P3-B1 y P3-E1 completos. B2.0 está
+cerrado; B2.1/B2.2 continúan `PLANNED`.
 
-Objetivo: subtareas independientes, concurrencia limitada, cancelación por rama,
-budget agregado, provenance, evaluación/síntesis y degradación secuencial.
+P3-B2 deja de ser una sola entrega de paralelismo y se divide en tres pasos para
+no implementar concurrencia antes de definir cómo se decide una estrategia.
 
-Puerta de salida futura: ninguna rama pierde estado durable, amplía autoridad,
-duplica efectos o excede budget agregado.
+### P3-B2.0 --- Strategy Deliberation Contract
 
-## P3-C — Tool Gateway MCP
+Estado: `DONE` documental (2026-09-25). Implementación ejecutable: `PENDING`.
+
+Objetivo: definir cómo Trivergence obtiene, compara y sintetiza soluciones de
+varias inteligencias elegibles antes de comprometer un plan ejecutable.
+
+ADR-0016 define elegibilidad, identidad lógica de modelo/capability,
+`StrategyProposal`, `StrategyCritique`, evaluación, selección/síntesis, context
+slicing, budgets, stop/degradación, Evidence y provenance. Dos rutas hacia el
+mismo modelo no cuentan automáticamente como dos opiniones independientes. La
+mayoría simple o la identidad de marca no son autoridad.
+
+P3-B2.0 es contrato/diseño: no requiere provider externo, no crea fan-out real y
+no convierte a Trivergence en multi-AI ejecutable.
+
+La frontera aceptada usa dos planes: un `DeliberationPlan` preliminar pasa por
+Planner, Policy/Approval, Runtime y Provider Gateway; el outcome evaluado vuelve
+a Strategy y recién entonces origina el plan final. Strategy no llama providers.
+
+Documentos:
+[ADR-0016](docs/architecture/adr/0016-strategy-deliberation-contract.md) y
+[reporte P3-B2.0](docs/product/p3-b2-0-strategy-deliberation-report.md).
+
+### P3-B2.1 --- bounded fan-out/fan-in substrate
+
+Estado: `PLANNED`, dependiente de P3-B2.0. **Siguiente paso mínimo
+recomendado.**
+
+Objetivo: ramas concurrentes acotadas, cancelación por rama, budget agregado,
+durable branch state, provenance y `context slicing`, reutilizables tanto para
+deliberación como para ejecución paralela futura.
+
+Puerta de salida: ninguna rama pierde estado durable, amplía autoridad, filtra
+contexto lateralmente, duplica efectos o excede budget agregado; degradación
+secuencial segura obligatoria.
+
+### P3-B2.2 --- Strategy Deliberation sobre el substrate
+
+Estado: `PLANNED`, dependiente de P3-B2.1.
+
+Objetivo: ejecutar proposals independientes, crítica/contraste acotado,
+Evaluation y selección/síntesis de estrategia antes del Execution Planner. La IA
+que origina la estrategia seleccionada no obtiene automáticamente el rol de
+ejecutor o verificador.
+
+Puerta de salida: deliberación bounded por budgets, explicable mediante
+Evidence/provenance, segura ante participantes maliciosos y sin claims de
+multi-AI real hasta existir providers externos independientes aprobados.
+
+## P3-C --- Tool Gateway MCP
 
 Estado: `PLANNED`. Dependencias: P3-D0, Registry/Policy/Approval estables y
 estado durable aplicable.
@@ -291,7 +345,7 @@ MCP reutiliza Execution Gateway; nunca implementa supervisor independiente.
 Puerta de salida futura: un servidor no confiable no escapa de policy, accede a
 recursos excluidos ni ejecuta una capability no aprobada.
 
-## P3-A2 — Project Intelligence
+## P3-A2 --- Project Intelligence
 
 Estado: `PLANNED`. Dependencia: P3-A1.
 
@@ -302,7 +356,7 @@ convierte outputs en hechos y no exige embeddings ni knowledge graph.
 Puerta de salida futura: fuentes exactas, exclusiones/private mode, invalidación
 y pruebas de poisoning verificadas.
 
-## P3-F1 — Trivergence Trace
+## P3-F1 --- Trivergence Trace
 
 Estado: `PLANNED`. Dependencias: IDs y transiciones estables de P3-E1 y las
 fuentes actuales de Audit/Evidence/provenance.
@@ -311,12 +365,37 @@ Objetivo: proyección correlacionada
 objetivo→estrategia→plan→ejecución→evaluación →resultado. Trace no es una nueva
 fuente de verdad.
 
-## P3-F2 — exporter OpenTelemetry
+## P3-F2 --- exporter OpenTelemetry
 
 Estado: `PLANNED`. Dependencia: P3-F1.
 
 Objetivo: exportación opt-in y sanitizada de la proyección Trace. OpenTelemetry
 no reemplaza persistence, audit chain ni evidence.
+
+## Evolución de routing y catálogo de capacidades
+
+Estado: `PLANNED` / sujeto a gates independientes.
+
+Trivergence debe evolucionar hacia resolución integral en dos niveles:
+**modelo/capacidad → ruta de provider**. Strategy podrá comparar únicamente
+opciones disponibles y autorizadas usando capabilities, evidencia de calidad,
+privacidad, contexto, budgets, latencia/coste cuando sean medibles, recovery,
+provenance y preferencias o restricciones explícitas del usuario.
+
+La arquitectura distingue modelos/familias, provider routes (cloud, CLI oficial,
+endpoint empresarial, runtime local u open-weight), meta-provider/router, Agent
+Profiles, tools, execution backends y capabilities multimodales. Un fallback
+automático solo puede ocurrir entre rutas previamente elegibles y autorizadas.
+
+El Capability Registry podrá representar también research, retrieval y artifacts
+versionados ---código, documentos, UI, reportes, configuración o media--- con
+identidad, digest, productor, Evidence y estado. Esto es arquitectura futura y
+no afirma implementación actual.
+
+Strategy Deliberation consume esta resolución pero no la sustituye: primero se
+determina qué participantes/rutas son elegibles; después se solicitan proposals.
+Dos rutas hacia el mismo modelo no se consideran diversidad independiente salvo
+evidencia material.
 
 ## Capacidades posteriores exclusivamente experimentales
 
@@ -338,7 +417,8 @@ No forman parte del compromiso P3 inicial:
 
 - marketplace público de extensiones;
 - instalación automática de código no auditado;
-- torneo/consejo de proveedores por defecto;
+- votación, torneo o consejo basado en marca/mayoría simple como mecanismo de
+  autoridad;
 - autonomía destructiva;
 - editor/IDE completo;
 - modelo de IA propio;
@@ -349,7 +429,7 @@ No forman parte del compromiso P3 inicial:
 
 Orden normativo:
 
-`P3-0 → P3-A1 → P3-D0 → P3-E1 → P3-B1 → P3-B2 → P3-C → P3-A2 → P3-F1 → P3-F2`.
+`P3-0 → P3-A1 → P3-D0 → P3-E1 → P3-B1 → P3-B2.0 → P3-B2.1 → P3-B2.2 → P3-C → P3-A2 → P3-F1 → P3-F2`.
 
 M5 y M7 continúan como puertas independientes y no cambian por P3. Las
 capacidades experimentales quedan después de P3-F2 y no entran al roadmap de

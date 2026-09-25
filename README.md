@@ -2,14 +2,17 @@
 
 # TRIVERGENCE
 
-### One objective. Many capabilities. One orchestrated path.
+### One objective. Many intelligences and capabilities. One verified strategy.
 
 **An open-source, local-first AI engineering orchestrator for Windows.**
 
 Trivergence is being built so you can describe **what you want to achieve**
-while the system determines how agents, tools, memory, workflows and approved AI
-providers should work together — with policy, human approval, evaluation and
-evidence around execution.
+while the system determines which AI participants, agents, tools, memory,
+workflows and approved provider routes can contribute. For substantial
+objectives, eligible AIs can propose independent solutions, critique
+alternatives and feed an evidence-backed strategy decision before Trivergence
+plans and coordinates execution — with policy, human approval, budgets, recovery
+and evidence around the whole process.
 
 **Not another IDE. Not another model. The orchestration layer between your
 objective and the AI ecosystem.**
@@ -39,10 +42,13 @@ result manually.
 
 **Trivergence is building the coordination layer.**
 
-You start with an objective. Trivergence analyzes the capabilities available to
-it, compares viable routes, creates an explicit plan, applies policy and
-approval gates, coordinates execution, evaluates the outcome and preserves
-evidence of what happened.
+You start with an objective. Trivergence resolves which capabilities and AI
+participants are actually eligible. When the objective benefits from
+deliberation, Planner must first describe that preliminary work so it can cross
+the same policy, approval, Runtime and provider boundaries as any other
+execution. Its independent proposals and bounded critique return to Evaluation
+and Strategy; only then does Trivergence select or synthesize a strategy and
+build the final executable plan.
 
 ```text
                          YOUR OBJECTIVE
@@ -50,13 +56,13 @@ evidence of what happened.
                                ▼
                     ┌─────────────────────┐
                     │  STRATEGY ENGINE    │
-                    │ compare viable paths│
+                    │ DIRECT/DELIBERATIVE │
                     └──────────┬──────────┘
-                               │
+                               │ DELIBERATIVE
                                ▼
                     ┌─────────────────────┐
                     │ EXECUTION PLANNER   │
-                    │ explicit steps      │
+                    │ preliminary plan    │
                     └──────────┬──────────┘
                                │
                     Policy ────┼──── Human approval
@@ -64,25 +70,29 @@ evidence of what happened.
                                ▼
               ┌────────────────────────────────┐
               │       ORCHESTRATION RUNTIME    │
-              ├────────┬────────┬───────┬───────┤
-              │ Agents │ Tools  │Memory │Flows  │
-              └────────┴────────┴───────┴───┬───┘
-                                            │
-                         Approved providers ┘
-                               │
-                               ▼
+              │      Provider Gateway          │
+              └───────────────┬────────────────┘
+                              │ proposals / critiques
+                              ▼
                     ┌─────────────────────┐
                     │ EVALUATION ENGINE   │
-                    │ verify the outcome  │
+                    │ normalize / verify  │
                     └──────────┬──────────┘
                                │
                                ▼
-                  RESULT + PROVENANCE + AUDIT
+                 Strategy decision → final plan
+                               │
+                               ▼
+                  Runtime → Execute → Postflight
+                               │
+                               ▼
+             RESULT + EVIDENCE + PROVENANCE + AUDIT
 ```
 
-A provider is a capability behind the orchestration boundary — **not the center
-of the product**. Models, tools and providers should be replaceable without
-redesigning Trivergence.
+A provider is a capability route behind the orchestration boundary — **not the
+center of the product**. Model/capability identity, provider route, agent
+profile, tool and execution backend remain separate concepts so each can be
+replaced or resolved independently.
 
 ## Built around orchestration, not provider switching
 
@@ -91,17 +101,18 @@ goal is to make coordination itself a first-class engineering problem: strategy,
 planning, capability discovery, permissions, execution, evaluation, recovery and
 provenance.
 
-The design is guided by seven principles:
+The design is guided by eight principles:
 
-| Principle             | What it means                                                                         |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| **Objective-first**   | Start from the outcome the user wants, not from a provider selector.                  |
-| **Provider-agnostic** | No model, vendor or agent should be architecturally indispensable.                    |
-| **Local-first**       | Core state, orchestration and control stay local whenever possible.                   |
-| **Human-governed**    | Privileged actions are previewable, attributable and approval-aware.                  |
-| **Fail-closed**       | Missing trust or ambiguous permission blocks execution instead of weakening controls. |
-| **Evidence-driven**   | Decisions and outcomes can be inspected without storing private chain-of-thought.     |
-| **Composable**        | Agents, workflows, memory, tools and providers meet behind stable contracts.          |
+| Principle             | What it means                                                                                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Objective-first**   | Start from the outcome the user wants, not from a provider selector.                                                                            |
+| **Provider-agnostic** | No model, vendor or agent should be architecturally indispensable.                                                                              |
+| **Local-first**       | Core state, orchestration and control stay local whenever possible.                                                                             |
+| **Human-governed**    | Privileged actions are previewable, attributable and approval-aware.                                                                            |
+| **Fail-closed**       | Missing trust or ambiguous permission blocks execution instead of weakening controls.                                                           |
+| **Evidence-driven**   | Decisions and outcomes can be inspected without storing private chain-of-thought.                                                               |
+| **Composable**        | Agents, workflows, memory, tools and providers meet behind stable contracts.                                                                    |
+| **Deliberative**      | Substantial objectives may use independent proposals and critique before execution; evidence, not votes or brand, drives the strategy decision. |
 
 ## Product preview
 
@@ -146,6 +157,8 @@ evidence, see [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 ### Deliberately not claimed yet
 
 - **No external AI provider is currently enabled for execution.**
+- Multi-AI Strategy Deliberation is an architectural target, not a current
+  product capability.
 - Codex, Claude and Gemini remain behind technical and contractual trust gates.
 - The Reference Provider is a local conformance harness, not an external AI
   service.
@@ -160,28 +173,35 @@ have not passed their gates.
 The intended interaction is closer to **Mission Control** than to an IDE.
 
 Instead of opening a model and figuring out how to divide the work yourself, you
-tell Trivergence what you want to accomplish. The system should be able to
-reason about complexity, capabilities, privacy, budget and risk; assemble an
-execution strategy; coordinate specialized participants; request your approval
-when needed; recover from failure; and return a synthesized result with enough
-provenance to understand what happened.
+tell Trivergence what you want to accomplish. The system should reason about
+complexity, capabilities, privacy, budget and risk; decide whether deliberation
+adds value; gather independent AI proposals when appropriate; compare and
+synthesize them; then coordinate the participants and tools needed to execute
+and verify the resulting strategy.
 
 ```text
 "Build / analyze / research / fix this"
                   │
                   ▼
-       Trivergence decides HOW
-                  │
-       ┌──────────┼──────────┐
-       ▼          ▼          ▼
-    Agent A    Agent B     Tool / Flow
-       │          │          │
-       └──────────┼──────────┘
-                  ▼
-          Evaluate & recover
-                  ▼
-             One result
+       Eligible AI participants
+        ┌────────┼────────┐
+        ▼        ▼        ▼
+   Proposal A Proposal B Proposal C
+        └────────┼────────┘
+                 ▼
+       Critique + Evaluation
+                 ▼
+       Strategy / Synthesis
+                 ▼
+     Plan → Execute → Verify
+                 ▼
+              One result
 ```
+
+The AI that proposes the strongest strategy does not automatically become the
+executor of every step. Planning, execution and verification can resolve to
+different eligible models, agents or tools when that produces a safer or better
+supported result.
 
 ## Architecture
 
@@ -189,6 +209,7 @@ provenance to understand what happened.
 Trivergence
 ├── Orchestration Engine
 │   ├── Strategy Engine
+│   │   └── Strategy Deliberation (planned)
 │   ├── Execution Planner
 │   ├── Capability Registry
 │   ├── Policy Engine
@@ -267,12 +288,15 @@ vulnerabilities or sensitive security findings, follow
 
 The near-term path is intentionally disciplined:
 
-1. strengthen the local orchestration core and Mission Control experience;
-2. finish visible recovery, privacy, history and audit workflows;
-3. integrate the first external provider only after its gate is satisfied;
-4. validate a second independent provider before presenting Trivergence as a
-   working multi-AI orchestrator;
-5. complete signed, clean-machine Windows distribution gates.
+1. implement bounded fan-out/fan-in and context slicing under the accepted
+   Strategy Deliberation contract, without claiming multi-AI execution;
+2. use that verified substrate for proposal → critique → evaluation → synthesis;
+3. continue the Tool Gateway, Project Intelligence and trace roadmap;
+4. integrate external providers only after their independent technical,
+   contractual and security gates are satisfied;
+5. validate at least two independent external providers before presenting
+   Trivergence as a working multi-AI orchestrator;
+6. complete signed, clean-machine Windows distribution gates.
 
 Broader ideas — plugins, SDKs, automation, collaboration, specialized agents and
 enterprise capabilities — remain part of the longer horizon, not promises of

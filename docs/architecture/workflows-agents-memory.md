@@ -62,6 +62,20 @@ referencias en el plan y el workflow durable. El equipo sigue secuencial. Una
 contribución incluye la referencia del perfil que la produjo. Un perfil no es
 provider, modelo, permiso, proceso worker ni fuente de autoridad.
 
+## Dirección P3-B2 aceptada
+
+ADR-0016 reutiliza los perfiles `planning`, `critique` y `synthesis` como
+responsabilidades futuras de proposal, critique y synthesis. No crea otra
+jerarquía: cada participación conserva `profileId/revision/digest`, mientras la
+identidad de model/capability y la provider route permanecen separadas.
+
+La deliberación no se añade al workflow M6 existente. Planner deberá producir un
+`DeliberationPlan` preliminar; Runtime lo ejecutará mediante sus dispatchers y
+Provider Gateway; Evaluation normalizará resultados y Strategy decidirá antes
+del plan final. P3-B2.0 solo acepta este contrato. Concurrencia, slices y estado
+durable de ramas pertenecen a P3-B2.1; proposal→critique→evaluation→synthesis a
+P3-B2.2.
+
 ## Contratos y cambios compatibles
 
 Se mantuvieron los contratos estables. Solo se hicieron extensiones aditivas

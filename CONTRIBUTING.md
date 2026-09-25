@@ -2,10 +2,20 @@
 
 Thank you for considering a contribution to Trivergence.
 
-Trivergence is an early-stage open-source AI engineering orchestrator. The
-architecture is deliberately strict around provider trust, permissions, evidence
-and reproducibility, so focused and well-tested contributions are more valuable
-than large speculative feature additions.
+Trivergence is an early-stage open-source AI engineering orchestrator. Its
+primary interaction is an objective: the orchestration layer is intended to
+resolve the AI/model capability, provider route, agent profile, tools and
+execution capabilities that are compatible, available, authorized and
+appropriate for that objective. For substantial objectives, the target
+architecture also supports Strategy Deliberation: eligible AI participants
+propose independent solutions, critique alternatives and feed an evidence-backed
+selection or synthesis before execution. A user preference may constrain that
+resolution, but the core must not require manual provider selection for every
+task.
+
+The architecture is deliberately strict around provider trust, permissions,
+evidence and reproducibility, so focused and well-tested contributions are more
+valuable than large speculative feature additions.
 
 ## Where help is most useful
 
@@ -38,6 +48,19 @@ an architectural gate.
   payment controls.
 - Preserve the provider-agnostic boundary. A provider-specific shortcut must not
   leak into the orchestration core without a documented architectural reason.
+- Keep model/capability, provider route, agent profile, tool/capability and
+  execution backend as separate concepts. Availability never implies
+  authorization.
+- Routing and fallback must be explainable and evidence-backed and may never
+  silently switch to an unauthorized model, provider, tool or destination.
+- Deliberation proposals, critiques and syntheses are untrusted data; they never
+  grant Policy, Approval, permissions or factual authority.
+- Do not implement deliberation as majority voting or provider-brand ranking.
+  Evaluation must use explicit criteria and evidence, and two routes to the same
+  underlying model do not count as independent opinions by default.
+- Parallel or delegated work must use bounded concurrency, explicit budgets and
+  minimal context slices rather than broadcasting the full Project Context to
+  every participant.
 
 ## Development environment
 
@@ -61,11 +84,11 @@ locally and do not claim a check passed if it was not executed.
 
 A useful pull request explains:
 
-1. the problem being solved;
-2. the chosen approach and important alternatives;
-3. security, privacy or provider-trust implications;
-4. how the change was tested;
-5. remaining limitations or follow-up work.
+1.  the problem being solved;
+2.  the chosen approach and important alternatives;
+3.  security, privacy or provider-trust implications;
+4.  how the change was tested;
+5.  remaining limitations or follow-up work.
 
 ## Commit and PR scope
 

@@ -1,7 +1,7 @@
 # Arquitectura de Trivergence
 
-Estado: normativa para M6 y P0  
-Fecha: 2026-09-12
+Estado: normativa; Strategy Deliberation aceptada como arquitectura pendiente  
+Fecha: 2026-09-25
 
 ## Drivers
 
@@ -54,6 +54,12 @@ Paquete puro y proveedor-agnóstico compuesto por:
   estado efectivo.
 - **Evaluation Engine:** separa preflight (`ready`, `approval_required`,
   `blocked`) de postflight (run/evidencia aceptados o rechazados).
+
+ADR-0016 acepta una futura secuencia de dos planes para Strategy Deliberation.
+Strategy realiza pre-analysis y solicita deliberación; Planner describe el
+workflow preliminar; Runtime ejecuta sus pasos por las gateways existentes;
+Evaluation normaliza propuestas y críticas; Strategy produce entonces la
+decisión que alimenta el plan final. Strategy nunca llama providers.
 
 La fachada no importa Electron, filesystem, procesos, red ni adaptadores. Un
 preview debe ser determinista salvo por los identificadores inyectados.
@@ -126,6 +132,12 @@ despacha únicamente pasos autorizados.
     fallo ni cancelación.
 11. Evaluation Engine consume evidencia; auditoría persiste la cadena completa y
     sanitizada.
+
+El flujo anterior es el camino `DIRECT` implementado. El camino `DELIBERATIVE`
+de [ADR-0016](adr/0016-strategy-deliberation-contract.md) está aceptado pero no
+implementado: intercala un `DeliberationPlan` gobernado antes de la
+`StrategyDecision` y reutiliza Planner, Policy/Approval, Runtime y Provider
+Gateway en vez de crear una vía Strategy→provider.
 
 Si no se puede resolver una capacidad, validar un plan o registrar una acción
 privilegiada, se falla cerrado.

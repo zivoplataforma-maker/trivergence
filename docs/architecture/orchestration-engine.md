@@ -1,8 +1,7 @@
 # Orchestration Engine
 
-Estado: núcleo P0 implementado; verificación final en
-`IMPLEMENTATION_STATUS.md`  
-Fecha: 2026-09-12
+Estado: núcleo implementado; Strategy Deliberation aceptada y pendiente  
+Fecha: 2026-09-25
 
 ## Responsabilidad
 
@@ -50,6 +49,19 @@ semántica por IA. Una intención ambigua o sin coincidencias queda `unavailable
 el usuario revisa las rutas antes de ejecutar. Strategy no inspecciona archivos
 ni consulta proveedores. Una capacidad ausente, deshabilitada o no disponible no
 se sustituye silenciosamente.
+
+### Strategy Deliberation — contrato aceptado, no implementado
+
+ADR-0016 preserva la pureza del núcleo mediante dos planes. Strategy pre-analiza
+`DIRECT | DELIBERATIVE | UNAVAILABLE`; si solicita deliberación, Planner crea un
+`DeliberationPlan` preliminar. Policy/Approval y Runtime ejecutan ese plan por
+la Provider Gateway, Evaluation produce evaluaciones normalizadas y Strategy
+consume el `DeliberationOutcome` para producir la `StrategyDecision`. Solo
+entonces Planner crea el plan final.
+
+Proposals, critiques y synthesis son datos no confiables. Provider route es
+provenance, no identidad lógica ni voto. P3-B2.0 no añade estas APIs al código;
+P3-B2.1 implementará el substrate y P3-B2.2 la integración deliberativa.
 
 ### Project Context
 
@@ -115,6 +127,9 @@ Runtime. No existe `execute()` en este paquete.
 El Runtime recibe el artefacto canónico, revalida snapshot y digest y despacha
 los pasos autorizados. Strategy, Planner y Evaluation no importan adaptadores
 concretos.
+
+La misma regla regirá deliberation: el núcleo construirá/consumirá artefactos
+tipados, pero toda llamada seguirá pasando por Runtime y la gateway registrada.
 
 ## Integridad del artefacto
 

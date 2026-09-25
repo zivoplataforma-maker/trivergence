@@ -5,27 +5,54 @@
 Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 `PLANNED` no iniciado, `BLOCKED` requiere una decisión o dependencia externa.
 
-| Hito                                | Estado  | Evidencia / bloqueo                                                                                                |
-| ----------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
-| M0 — especificación y riesgos       | DONE    | Documentos reencuadrados: orquestación como núcleo, ADR-0002, seguridad, UI, datos y roadmap coherentes.           |
-| M1 — foundation segura              | DONE    | Shell seguro, IPC nominal, diagnóstico, Policy Engine, build, smoke y E2E aislado verificados.                     |
-| M2 — kernel de orquestación         | DONE    | Cuatro motores, contratos y preview verificados de renderer a UI sobre el build real de Electron.                  |
-| M3 — Runtime, aprobación y audit    | DONE    | Plan persistido, aprobación de un uso, supervisión, evidencia, timeout/cancel y orphan recovery verificados.       |
-| M4 — workspace/capacidades reales   | DONE    | Selección, preview, ejecución/cancelación, resultado y evidencia read-only verificados desde la UI.                |
-| M5 — primer conector                | PARTIAL | Contrato/Reference Provider local verificados; ningún proveedor externo superó aún su gate.                        |
-| M6 — workflows, agentes y memoria   | DONE    | Pipeline local de cinco pasos, budgets, provenance, memoria, evaluación, auditoría, E2E y build verificados.       |
-| M7 — hardening/distribución Windows | PARTIAL | Controles y paquete unsigned verificados localmente; faltan reproducibilidad NSIS, firma y matriz limpia Win10/11. |
-| P3-0 — documentación y ADRs         | DONE    | Normalización documental, ownership y cuatro ADRs propuestos; sin cambios de código ni inicio funcional de P3.     |
-| P3-0.1 — revisión técnica de ADRs   | DONE    | ADR-0012 a ADR-0015 aceptados con correcciones documentales; implementación continúa pendiente.                    |
-| P3-A1 — Project Context mínimo      | DONE    | Snapshot v1 determinista, builder, persistencia privada/estándar, Strategy, threat model y tests verificados.      |
-| P3-D0 — Execution Gateway contract  | DONE    | Contrato v1, backend local supervisado, Policy/Approval/Context bindings, límites y tests verificados.             |
-| P3-E1 — Durable Workflow State      | DONE    | Estado/steps SQLite, restart conservador, budgets/approvals y resume seguro verificados.                           |
-| P3-B1 — Agent Profiles              | DONE    | Perfiles v1 declarativos, selección/validación, refs durables, provenance y regresiones verificadas.               |
-| P3 — evolución arquitectónica       | PARTIAL | P3-A1, P3-D0, P3-E1 y P3-B1 completos; P3-B2 y fases posteriores no comenzaron.                                    |
+| Hito                                     | Estado    | Evidencia / bloqueo                                                                                                     |
+| ---------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------- |
+| M0 — especificación y riesgos            | `DONE`    | Documentos reencuadrados: orquestación como núcleo, ADR-0002, seguridad, UI, datos y roadmap coherentes.                |
+| M1 — foundation segura                   | `DONE`    | Shell seguro, IPC nominal, diagnóstico, Policy Engine, build, smoke y E2E aislado verificados.                          |
+| M2 — kernel de orquestación              | `DONE`    | Cuatro motores, contratos y preview verificados de renderer a UI sobre el build real de Electron.                       |
+| M3 — Runtime, aprobación y audit         | `DONE`    | Plan persistido, aprobación de un uso, supervisión, evidencia, timeout/cancel y orphan recovery verificados.            |
+| M4 — workspace/capacidades reales        | `DONE`    | Selección, preview, ejecución/cancelación, resultado y evidencia read-only verificados desde la UI.                     |
+| M5 — primer conector                     | `PARTIAL` | Contrato/Reference Provider local verificados; ningún proveedor externo superó aún su gate.                             |
+| M6 — workflows, agentes y memoria        | `DONE`    | Pipeline local de cinco pasos, budgets, provenance, memoria, evaluación, auditoría, E2E y build verificados.            |
+| M7 — hardening/distribución              | `PARTIAL` | Controles y paquete unsigned verificados localmente; faltan reproducibilidad NSIS, firma y matriz limpia Windows 10/11. |
+| P3-0 — documentación y ADRs              | `DONE`    | Normalización documental, ownership y cuatro ADRs; sin cambios de código ni inicio funcional de P3.                     |
+| P3-0.1 — revisión técnica de ADRs        | `DONE`    | ADR-0012 a ADR-0015 aceptados con correcciones documentales; implementación pendiente.                                  |
+| P3-A1 — Project Context mínimo           | `DONE`    | Snapshot v1 determinista, builder, persistencia privada/estándar, Strategy, threat model y tests verificados.           |
+| P3-D0 — Execution Gateway                | `DONE`    | Contrato v1, backend local supervisado, Policy/Approval/Context bindings, límites y tests verificados.                  |
+| P3-E1 — Durable Workflow State           | `DONE`    | Estado/steps SQLite, restart conservador, budgets/approvals y resume seguro verificados.                                |
+| P3-B1 — Agent Profiles                   | `DONE`    | Perfiles v1 declarativos, selección/validación, refs durables, provenance y regresiones verificadas.                    |
+| P3-B2.0 — Strategy Deliberation Contract | `DONE`    | ADR-0016 y arquitectura aceptados; no hay contratos ejecutables, concurrencia ni deliberación en Runtime.               |
+| P3-B2 — deliberación y fan-out/fan-in    | `PARTIAL` | B2.0 documental completo; B2.1 y B2.2 permanecen `PLANNED`.                                                             |
+| P3 — evolución arquitectónica            | `PARTIAL` | P3-A1, P3-D0, P3-E1, P3-B1 y P3-B2.0 completos; fases ejecutables posteriores pendientes.                               |
 
-## P3-B1 — Agent Profiles (2026-09-25)
+## P3-B2.0 — Strategy Deliberation Contract (2026-09-25)
 
-Estado: `DONE`. P3-B2 no comenzó.
+Estado: `DONE` exclusivamente como decisión arquitectónica. P3-B2.1 y P3-B2.2 no
+comenzaron.
+
+- ADR-0016 fija un protocolo de dos planes: un `DeliberationPlan` preliminar
+  pasa por Planner, Policy/Approval, Runtime y Provider Gateway; solo su outcome
+  evaluado vuelve a Strategy para producir la decisión que alimenta al plan
+  final.
+- Strategy nunca llama providers. Proposal, critique y synthesis son datos no
+  confiables; no conceden autoridad ni convierten mayoría, marca o confianza
+  autodeclarada en evidencia.
+- La identidad lógica de modelo/capability se separa de la ruta de provider para
+  impedir falso consenso. Los participantes se filtran por elegibilidad,
+  privacidad, budget y Policy antes de cualquier dispatch futuro.
+- `DIRECT` conserva el flujo actual. `DELIBERATIVE` permanece sin implementar
+  hasta P3-B2.1/B2.2.
+- Evidencia:
+  [ADR-0016](docs/architecture/adr/0016-strategy-deliberation-contract.md),
+  [informe P3-B2.0](docs/product/p3-b2-0-strategy-deliberation-report.md) y
+  [threat model](docs/security/threat-model-p3-b2.md).
+
+M5 y M7 continúan `PARTIAL`; Reference Provider sigue siendo el único provider
+ejecutable.
+
+## P3-B1 --- Agent Profiles (2026-09-25)
+
+Estado: `DONE`. P3-B2.0 está cerrado documentalmente; B2.1/B2.2 no comenzaron.
 
 - El catálogo v1 convierte los roles M6 existentes en perfiles declarativos
   `planning`, `critique` y `synthesis`; ninguno contiene provider ID, modelo,
@@ -44,7 +71,7 @@ Estado: `DONE`. P3-B2 no comenzó.
   [`docs/product/p3-b1-agent-profiles-report.md`](docs/product/p3-b1-agent-profiles-report.md).
   M5 y M7 siguen `PARTIAL`; no se habilitó provider externo.
 
-## P3-E1 — Durable Workflow State (2026-09-24)
+## P3-E1 --- Durable Workflow State (2026-09-24)
 
 Estado: `DONE`. Esta base durable permanece vigente y P3-B1 ya está `DONE`.
 
@@ -72,7 +99,7 @@ Evidencia completa en
 M5 y M7 permanecen `PARTIAL`; Reference Provider continúa siendo el único
 provider ejecutable.
 
-## P3-D0 — Execution Gateway Contract (2026-09-22)
+## P3-D0 --- Execution Gateway Contract (2026-09-22)
 
 Estado: `DONE`. Al cerrar esta fase, P3-E1 todavía no había comenzado; su estado
 actual se registra arriba.
@@ -100,7 +127,7 @@ Evidencia y gates completos en
 M5 y M7 permanecen `PARTIAL`; Reference Provider continúa siendo el único
 provider ejecutable.
 
-## P3-A1 — Project Context mínimo (2026-09-22)
+## P3-A1 --- Project Context mínimo (2026-09-22)
 
 Estado: `DONE`. P3-D0 no comenzó.
 
@@ -133,14 +160,14 @@ M5 y M7 permanecen `PARTIAL`; ningún provider externo fue habilitado y Referenc
 Provider continúa siendo el único ejecutable. Evidencia completa en
 [`docs/product/p3-a1-project-context-report.md`](docs/product/p3-a1-project-context-report.md).
 
-## P3-0 — normalización documental (2026-09-22)
+## P3-0 --- normalización documental (2026-09-22)
 
 Estado: `DONE` exclusivamente para el alcance documental. P3-A1 no comenzó.
 
 - Prompt Maestro separa selección actual de rutas de selección integral futura
   de providers;
 - Roadmap adopta el orden
-  `P3-A1 → P3-D0 → P3-E1 → P3-B1 → P3-B2 → P3-C → P3-A2 → P3-F1 → P3-F2`;
+  `P3-A1 → P3-D0 → P3-E1 → P3-B1 → P3-B2.0 → P3-B2.1 → P3-B2.2 → P3-C → P3-A2 → P3-F1 → P3-F2`;
 - ownership normativo evita fuentes de verdad duplicadas entre Context,
   Intelligence, Memory, Audit, Evidence, Trace, Runtime, Registry y gateways;
 - ADR-0011 registra que una lista de recovery capabilities no exige
@@ -150,7 +177,7 @@ Estado: `DONE` exclusivamente para el alcance documental. P3-A1 no comenzó.
   P3-0.1; esta aceptación no los implementa;
 - dossiers de providers usan ADR-0011 como conclusión vigente sin cambiar gates
   contractuales, autenticación, distribución o billing.
-- catálogo/manifests históricos aún nombran “Anthropic ant CLI” y recomiendan
+- catálogo/manifests históricos aún nombran "Anthropic ant CLI" y recomiendan
   Codex en código; como ningún provider superó todos los gates, esa metadata no
   gobierna routing y queda registrada como deuda técnica posterior.
 
@@ -158,7 +185,7 @@ No se modificaron contratos ejecutables, Runtime, ProviderAdapter, AdapterHost,
 trust store, autenticación ni providers. Reference Provider continúa siendo el
 único ejecutable. M5 y M7 permanecen `PARTIAL`.
 
-## P3-0.1 — revisión técnica de ADRs (2026-09-22)
+## P3-0.1 --- revisión técnica de ADRs (2026-09-22)
 
 Estado: `DONE` para revisión y decisión documental. P3-A1 no comenzó.
 
@@ -183,7 +210,7 @@ No se modificó código, configuración, contratos ejecutables, tests,
 autenticación ni trust store. Ningún provider fue habilitado; Reference Provider
 continúa siendo el único ejecutable. M5 y M7 permanecen `PARTIAL`.
 
-## M5-B0 — contrato de recovery (2026-09-21)
+## M5-B0 --- contrato de recovery (2026-09-21)
 
 Estado: `DONE` para la revisión y refactorización interna; M5 continúa
 `PARTIAL`. [ADR-0011](docs/architecture/adr/0011-recovery-semantics.md) separa
@@ -213,7 +240,7 @@ CycloneDX verificado con 451 componentes. CI Windows run `35608108255`:
 `success`. Commit de cierre: `ba69a26293aead9efaa2f06069a02e0be7d0f67c`; `main`
 y `origin/main` quedaron sincronizados (`0/0`) y el árbol limpio.
 
-## M5-A — Gate definitivo de Codex App Server (2026-09-15)
+## M5-A --- Gate definitivo de Codex App Server (2026-09-15)
 
 Resultado global: `UNRESOLVED`. La interfaz técnica oficial, `stdio`, schemas,
 streaming, cancelación y login gestionado son candidatos viables, pero el
@@ -227,7 +254,7 @@ Se creó el expediente, las preguntas para OpenAI y el threat model específico.
 No se creó adapter ni spike, no se habilitó Codex, no cambió el trust store y M5
 permanece `PARTIAL`.
 
-## M5-A2 — Gate de Claude/Anthropic (2026-09-15)
+## M5-A2 --- Gate de Claude/Anthropic (2026-09-15)
 
 Resultado global: `UNRESOLVED`. Anthropic permite ejecutar Claude Code oficial e
 inalterado dentro de productos y documenta `claude -p` con JSONL, cancelación,
@@ -245,7 +272,7 @@ permitido. Se crearon expediente, preguntas y threat model; no se creó adapter
 ni spike, no se habilitó Claude, no cambió el trust store y M5 permanece
 `PARTIAL`.
 
-## M5-A3 — Gate de Google/Gemini (2026-09-15)
+## M5-A3 --- Gate de Google/Gemini (2026-09-15)
 
 Resultado global: `UNRESOLVED`. Gemini CLI con login Google y Gemini Code Assist
 se rechazan como mecanismos de provider: Google prohíbe el piggyback del OAuth
@@ -268,7 +295,7 @@ y threat model. No hubo adapter, spike, cambios de ProviderAdapter/trust store
 ni activación; Reference Provider continúa siendo el único ejecutable. M5 y M7
 permanecen `PARTIAL`.
 
-## P2 — product hardening y preparación de M5 (2026-09-15)
+## P2 --- product hardening y preparación de M5 (2026-09-15)
 
 Estado: `DONE` para el alcance interno P2. Los gates locales finales y la
 [CI Windows 34966426691](https://github.com/zivoplataforma-maker/trivergence/actions/runs/34966426691)
@@ -316,10 +343,10 @@ y M7 siguen `PARTIAL`.
 - Modo privado no persiste nuevos textos de objetivo ni argumentos de pasos; el
   workflow no recuerda memoria guardada ni persiste su resultado temporal. El
   modo estándar conserva la memoria funcional con retención acotada.
-- Retención de 1–365 días solo tras guardarla explícitamente, borrado confirmado
-  de datos activos por workspace y vaciado de contenido/provenance de memoria
-  eliminada o expirada. La cadena append-only, backups y exportaciones no se
-  borran; no se afirma eliminación forense.
+- Retención de 1--365 días solo tras guardarla explícitamente, borrado
+  confirmado de datos activos por workspace y vaciado de contenido/provenance de
+  memoria eliminada o expirada. La cadena append-only, backups y exportaciones
+  no se borran; no se afirma eliminación forense.
 - El journal de archivos M7 se documenta como SHA-256 no autenticado. El número
   de versión se declara únicamente en `apps/desktop/package.json`; SBOM y
   verificación de paquete lo leen de esa fuente.
@@ -374,8 +401,12 @@ sistemas usados durante la investigación:
   acotado; snapshots confirmados siguen pendientes;
 - `DONE` P3-B1: perfiles declarativos por capabilities, contexto y budgets
   restrictivos, sin autoridad propia;
-- `PLANNED` P3-B2: fan-out/fan-in con concurrencia, cancelación, budget
-  agregado, evaluación y provenance;
+- `DONE` P3-B2.0: contrato arquitectónico de Strategy Deliberation, sin
+  implementación ejecutable;
+- `PLANNED` P3-B2.1: fan-out/fan-in con concurrencia, cancelación, context
+  slicing, budget agregado, durable branch state y provenance;
+- `PLANNED` P3-B2.2: proposals, crítica, Evaluation y selección/síntesis antes
+  del plan ejecutable;
 - `PLANNED` P3-C: Tool Gateway mediante MCP bajo Registry → Policy → Approval →
   Runtime → Evidence;
 - `PLANNED` P3-A2: Project Intelligence derivada con citas, provenance, context
@@ -393,6 +424,69 @@ sistemas usados durante la investigación:
 La arquitectura objetivo y el orden están documentados en
 `TRIVERGENCE_PROMPT_MAESTRO_CODEX.md` y `ROADMAP.md`. Ninguna capacidad de esta
 sección puede marcarse `DONE` sin implementación y evidencia propias.
+
+## Ampliación arquitectónica investigada (2026-09-25)
+
+Estado: `PLANNED` / `EXPERIMENTAL`. **No describe capacidades implementadas** y
+no modifica M5, M7 ni el hecho de que Reference Provider sea el único provider
+ejecutable.
+
+La revisión de providers, routers y herramientas modernas refuerza la dirección
+del producto: Trivergence recibe un objetivo y debe poder resolver, sin exigir
+selección manual en cada tarea, la combinación elegible de modelo/capacidad,
+ruta de provider, Agent Profile, tools y backend de ejecución. La resolución
+automática solo puede considerar opciones disponibles, compatibles,
+gate-authorized y permitidas por Policy/Approval, privacidad, budgets y
+restricciones del usuario.
+
+Quedan registradas como dirección futura, sin marcar `DONE`:
+
+- resolución separada `modelo/capacidad → provider route`, con fallback solo
+  entre rutas autorizadas y provenance completo;
+- rutas cloud, CLI oficial, empresariales, locales u open-weight sin acoplar el
+  core a una marca;
+- Strategy Deliberation: proposals independientes, crítica/contraste, Evaluation
+  y selección/síntesis antes de ejecución;
+- delegación dinámica acotada, context slicing y fan-out/fan-in evaluado;
+- research como familia de capabilities de búsqueda, retrieval, citas y
+  análisis;
+- artifacts versionados con identidad, digest, productor, Evidence y estado;
+- capabilities multimodales para diseño, voz, imagen y video;
+- Tool Gateway/MCP bajo Registry → Policy → Approval → Runtime → Evidence;
+- routers/meta-providers como rutas opcionales sujetas a los mismos gates.
+
+No se añadieron adapters, providers ejecutables, tools, credenciales ni
+dependencias por documentar esta dirección.
+
+## Alineación conceptual de Strategy Deliberation (2026-09-25)
+
+Estado: `DONE` como decisión arquitectónica, `PENDING` como capacidad
+ejecutable. P3-B1 sigue `DONE`; P3-B2.1/B2.2 no comenzaron; M5 y M7 continúan
+`PARTIAL`; Reference Provider sigue siendo el único provider ejecutable.
+
+La definición de producto queda alineada así:
+
+`objetivo → contexto/elegibilidad → [propuestas independientes → crítica → evaluación → selección/síntesis] → estrategia → plan → policy/approval → ejecución → verificación → resultado/evidence`.
+
+Para objetivos sustanciales o cuando el usuario lo solicite, Trivergence debe
+poder pedir soluciones estructuradas a varias inteligencias elegibles,
+contrastarlas y producir una decisión explicable. La IA que proponga la
+estrategia elegida no se convierte automáticamente en ejecutora o verificadora.
+Tareas triviales podrán usar ruta directa para respetar budget, latencia y
+privacidad.
+
+P3-B2 queda dividido en tres subfases: `P3-B2.0`, contrato de Strategy
+Deliberation ya aceptado; `P3-B2.1`, bounded fan-out/fan-in, context slicing y
+estado durable de ramas; `P3-B2.2`, proposals/critique/evaluation/synthesis
+sobre ese substrate. Las dos últimas continúan `PLANNED`.
+
+Proposal, critique y synthesis serán `untrusted_data`; no conceden permisos,
+Approval, Policy ni verdad. La decisión usa criterios verificables y budgets, no
+mayoría simple, identidad de marca ni confianza autodeclarada. Dos rutas hacia
+el mismo modelo no son automáticamente dos opiniones independientes.
+
+No se añadieron contratos ejecutables, migrations, providers, adapters, tools,
+credenciales, tests o dependencias por esta alineación documental.
 
 ## Entorno de descubrimiento
 
@@ -431,7 +525,7 @@ No implica cierre de M5 ni M7.
   sandbox de Codex; dentro de él Chromium y `taskkill /T` son bloqueados.
   `sandbox: true` permanece intacto en el producto.
 
-## Evidencia histórica M1–M7 (2026-09-11)
+## Evidencia histórica M1--M7 (2026-09-11)
 
 - `pnpm install --frozen-lockfile`: verificado con política de madurez y scripts
   permitidos por paquete.
@@ -532,6 +626,11 @@ No implica cierre de M5 ni M7.
 
 ## Afirmaciones todavía no permitidas
 
+- No afirmar que existe deliberación multi-IA de producción: Strategy
+  Deliberation permanece `PLANNED` y no hay providers externos ejecutables.
+- No presentar consenso/votación entre modelos como criterio implementado o
+  autoridad.
+
 - Existen flujos locales read-only y de coordinación M6 accesibles de extremo a
   extremo, pero no el MVP completo con proveedor externo, distribución y
   validación humana final.
@@ -546,7 +645,7 @@ No implica cierre de M5 ni M7.
 - No hay firma Authenticode, evidencia de Windows 10/11 limpios ni instalador
   byte-reproducible; por ello M7 permanece `PARTIAL`.
 
-## Auditoría final P0 — 2026-09-12
+## Auditoría final P0 --- 2026-09-12
 
 - `pnpm check:fresh`: `PASS` sin Turbo cache; Prettier, ESLint, typecheck de los
   12 proyectos, 123 tests de 12 proyectos y build directo de 12 proyectos.

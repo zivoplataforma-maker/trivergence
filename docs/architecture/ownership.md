@@ -1,8 +1,8 @@
 # Ownership arquitectónico de Trivergence
 
-Estado: **normativo; Project Context, Execution Gateway y durable state
-implementados**  
-Fecha: 2026-09-22
+Estado: **normativo; Strategy Deliberation aceptada, implementación
+pendiente**  
+Fecha: 2026-09-25
 
 ## Propósito
 
@@ -14,6 +14,7 @@ fuente.
 | Componente             | Responsabilidad principal                                                          | Fuente o entrada                                                              | Salida o proyección                                         | Prohibición de ownership                                               |
 | ---------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- |
 | Project Context        | Snapshot versionado del contexto operativo permitido para una decisión o ejecución | objetivo, workspace, policy, Registry, Memory, budgets e historial autorizado | context snapshot identificado y auditable                   | no persiste conocimiento como Memory ni reemplaza Audit                |
+| Strategy Deliberation  | Decisión explicable previa al plan final                                           | pre-analysis, participantes elegibles y outcomes evaluados                    | selección/síntesis para `StrategyDecision`                  | no ejecuta providers, vota por marca ni concede Policy/Approval        |
 | Project Intelligence   | Índice derivado y reconstruible de fuentes autorizadas                             | workspace, documentación, código, ADRs, runs y evidence permitidos            | búsquedas, citas, context packs y señales de drift          | no es verdad del proyecto ni autoedita documentos gobernantes          |
 | Memory                 | Conocimiento persistido y gobernado                                                | resultados explícitamente admitidos, provenance, TTL y retención              | recall acotado y elementos persistidos                      | no registra todos los hechos de ejecución ni suplanta Audit            |
 | Audit                  | Registro append-only de hechos de ejecución                                        | transiciones y decisiones observadas                                          | eventos verificables y exportables                          | no es una base mutable ni almacena contenido sensible por conveniencia |
@@ -52,6 +53,9 @@ fuente.
 9. Un workflow snapshot referencia fuentes autoritativas. Si una referencia
    expira, el snapshot queda degradado/no reanudable en vez de copiar contenido
    o extender retención.
+10. Strategy Deliberation usa dos planes: Planner describe el workflow
+    preliminar y el final; Runtime ejecuta ambos. Strategy no llama gateways y
+    una proposal/critique/synthesis nunca se convierte en autoridad.
 
 ## Estado de implementación
 
@@ -67,3 +71,6 @@ Approval conservan su autoridad. Esta definición no afirma que Project
 Intelligence, Tool Gateway, Workflow Snapshot o Trace estén implementados. El
 estado verificable permanece en `IMPLEMENTATION_STATUS.md` y el orden en
 `ROADMAP.md`.
+
+ADR-0016 añade el ownership documental de Strategy Deliberation. Sus contratos,
+fan-out, context slices y ejecución siguen pendientes de P3-B2.1/B2.2.

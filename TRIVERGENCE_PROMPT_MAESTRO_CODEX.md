@@ -1,7 +1,7 @@
-# Trivergence — Prompt Maestro para Codex
+# Trivergence --- Prompt Maestro para Codex
 
-Estado: **especificación maestra v2.0**  
-Última revisión: 2026-09-22
+Estado: **especificación maestra v2.1**\
+Última revisión: 2026-09-25
 
 Este documento es la constitución técnica y de producto de Trivergence. Define
 su propósito, invariantes, fronteras y dirección arquitectónica estable. El
@@ -19,10 +19,29 @@ entornos de ejecución bajo políticas, aprobaciones, evaluación, recuperación
 budgets, provenance, auditoría y evidencia comunes.
 
 La unidad de interacción primaria es el **objetivo**, no el proveedor. El
-usuario debe poder expresar qué quiere lograr y dejar que Trivergence determine
-qué capacidades compatibles pueden intervenir, explique el plan, solicite las
-aprobaciones necesarias, supervise la ejecución y presente resultado y
-evidencia.
+usuario debe poder expresar qué quiere lograr y dejar que Trivergence resuelva
+qué modelos/capacidades de IA, rutas de provider, Agent Profiles, tools y
+backends son elegibles para intervenir.
+
+Para objetivos sustanciales, de alto riesgo o cuando el usuario lo pida,
+Strategy debe poder activar **Strategy Deliberation**: varios participantes de
+IA elegibles reciben context slices apropiados, producen propuestas de solución
+independientes, pueden criticar propuestas alternativas y entregan evidencia y
+supuestos estructurados. Trivergence evalúa esas propuestas contra el objetivo,
+restricciones, evidencia, riesgo, coste y capabilities reales; después
+selecciona o sintetiza una estrategia antes de construir el plan ejecutable.
+
+La deliberación no es una votación de marcas. La mayoría, la confianza
+autodeclarada o el prestigio del provider no son autoridad. Una ruta que expone
+el mismo modelo por dos providers tampoco cuenta automáticamente como dos
+opiniones independientes. La estrategia elegida puede provenir de una IA y ser
+ejecutada o verificada por otras capacidades distintas.
+
+La selección manual de una marca o modelo es una preferencia/restricción
+opcional, no el flujo normal obligatorio. Toda selección automática,
+deliberación, delegación o fallback solo puede considerar opciones realmente
+disponibles, compatibles, gate-authorized y permitidas por Policy/Approval,
+privacidad y budgets.
 
 Trivergence no es un IDE, un modelo de IA, una CLI de IA ni un reemplazo de los
 proveedores o agentes que coordina. Tampoco debe convertirse en un contenedor de
@@ -35,25 +54,25 @@ locales disponibles y consultar historial, auditoría y recuperación.
 
 ## Principios no negociables
 
-1. **Objetivo primero.** La arquitectura parte de la intención del usuario y no
-   de un proveedor, agente o herramienta concreto.
-2. **El usuario conserva el control.** Toda acción privilegiada tiene destino,
-   riesgo, alcance, efecto y motivo visibles antes de aprobarse.
-3. **Evidencia antes que promesas.** Una capacidad solo se marca disponible o
-   completa cuando existe evidencia verificable proporcional a su riesgo.
-4. **Compatibilidad honesta.** El Capability Registry publica únicamente
-   capacidades realmente observadas, compatibles y autorizadas.
-5. **Fail closed.** Versiones, protocolos, estados, outputs, attestations o
-   recuperaciones desconocidas no se convierten en éxito por conveniencia.
-6. **Incertidumbre explícita.** Trivergence nunca afirma que una operación
-   remota ocurrió o no ocurrió si no puede demostrarlo.
-7. **Mínimo privilegio.** Renderer, procesos, tools, agentes, proveedores y
-   entornos de ejecución reciben únicamente la autoridad necesaria.
-8. **Policy y approvals son fronteras obligatorias.** Ningún subsistema externo
-   obtiene autoridad directa sobre filesystem, procesos, red, credenciales o
-   efectos privilegiados.
-9. **Provider-agnostic y agent-agnostic.** La lógica de una marca, modelo o
-   agente no se incorpora al Orchestration Engine.
+1.  **Objetivo primero.** La arquitectura parte de la intención del usuario y no
+    de un proveedor, agente o herramienta concreto.
+2.  **El usuario conserva el control.** Toda acción privilegiada tiene destino,
+    riesgo, alcance, efecto y motivo visibles antes de aprobarse.
+3.  **Evidencia antes que promesas.** Una capacidad solo se marca disponible o
+    completa cuando existe evidencia verificable proporcional a su riesgo.
+4.  **Compatibilidad honesta.** El Capability Registry publica únicamente
+    capacidades realmente observadas, compatibles y autorizadas.
+5.  **Fail closed.** Versiones, protocolos, estados, outputs, attestations o
+    recuperaciones desconocidas no se convierten en éxito por conveniencia.
+6.  **Incertidumbre explícita.** Trivergence nunca afirma que una operación
+    remota ocurrió o no ocurrió si no puede demostrarlo.
+7.  **Mínimo privilegio.** Renderer, procesos, tools, agentes, proveedores y
+    entornos de ejecución reciben únicamente la autoridad necesaria.
+8.  **Policy y approvals son fronteras obligatorias.** Ningún subsistema externo
+    obtiene autoridad directa sobre filesystem, procesos, red, credenciales o
+    efectos privilegiados.
+9.  **Provider-agnostic y agent-agnostic.** La lógica de una marca, modelo o
+    agente no se incorpora al Orchestration Engine.
 10. **Local-first no significa offline.** Estado, configuración y auditoría son
     locales por defecto; una capacidad de red puede enviar contexto solo al
     destino visible y autorizado.
@@ -71,6 +90,16 @@ locales disponibles y consultar historial, auditoría y recuperación.
 15. **Sin feature creep.** Una función futura no entra al core por ser
     atractiva; necesita caso de uso, contrato, threat model, budgets, pruebas y
     puerta de salida.
+16. **Deliberación antes de compromiso cuando aporta valor.** En tareas
+    sustanciales, Strategy puede solicitar propuestas independientes y críticas
+    antes de fijar la estrategia; tareas triviales pueden usar una ruta directa.
+17. **Evidencia antes que voto.** El consenso entre modelos no concede
+    autoridad. Proposal, critique y synthesis son datos no confiables hasta que
+    Evaluation los contraste con requisitos, Evidence, Policy y capabilities
+    reales.
+18. **Separación de roles.** Proponer una estrategia, ejecutar un paso y
+    verificar un resultado son responsabilidades distintas; no se presume una
+    misma IA.
 
 ## Estado conceptual de capacidades
 
@@ -87,30 +116,67 @@ Las etiquetas siguientes son normativas para interpretar este documento:
 
 ## Arquitectura normativa
 
-### 1. Orchestration Core — `CURRENT/CORE`
+### 1. Orchestration Core --- `CURRENT/CORE`
 
 El núcleo lógico continúa compuesto por:
 
-1. **Strategy Engine:** interpreta el objetivo, restricciones, privacidad,
-   budgets y capacidades; construye rutas candidatas, las compara y selecciona
-   una ruta explicable.
-2. **Execution Planner:** descompone la ruta en pasos y dependencias tipadas,
-   acíclicas y evaluables; no ejecuta.
-3. **Capability Registry:** inventario versionado de capacidades observadas,
-   restricciones, evidencia, riesgos y disponibilidad.
-4. **Evaluation Engine:** realiza evaluación preflight y postflight sobre plan,
-   policy, evidence, provenance y outcomes.
+1.  **Strategy Engine:** interpreta el objetivo, restricciones, privacidad,
+    budgets y capacidades; resuelve participantes elegibles, decide si la tarea
+    justifica deliberación, construye rutas candidatas y produce una estrategia
+    explicable. Strategy Deliberation no ejecuta efectos.
+2.  **Execution Planner:** descompone la ruta en pasos y dependencias tipadas,
+    acíclicas y evaluables; no ejecuta.
+3.  **Capability Registry:** inventario versionado de capacidades observadas,
+    restricciones, evidencia, riesgos y disponibilidad.
+4.  **Evaluation Engine:** realiza evaluación preflight y postflight sobre plan,
+    policy, evidence, provenance y outcomes.
 
 La secuencia conceptual es:
 
-`objetivo → contexto → estrategia → planificación → resolución de capacidades → preflight → policy/aprobación → ejecución → postflight → evidencia → resultado`
+`objetivo → contexto → elegibilidad → [deliberación: propuestas → crítica → evaluación → síntesis] → estrategia → planificación → resolución de capacidades → preflight → policy/aprobación → ejecución → verificación/postflight → evidencia → resultado`
 
 Strategy puede representar rutas secuenciales o paralelas cuando exista la
 capacidad correspondiente. El Runtime actual ejecuta el flujo soportado de forma
 secuencial; fan-out/fan-in permanece `NEXT/PLANNED` y nunca se presume gratuito
 ni seguro.
 
-### 2. Runtime, Policy, Approval y Evidence — `CURRENT/CORE`
+### 1.1 Strategy Deliberation --- contrato `ACCEPTED`, ejecución `NEXT/PLANNED`
+
+Strategy Deliberation es una capacidad del Strategy Engine, no un segundo
+orquestador ni una fuente de autoridad. Mejora la decisión previa a la ejecución
+cuando complejidad, diversidad de soluciones, riesgo o valor justifican el
+coste.
+
+El contrato futuro debe representar, de forma versionada y con provenance:
+
+- `DeliberationParticipant`: identidad lógica de inteligencia/capability y ruta
+  elegible, evitando contar dos rutas del mismo modelo como diversidad
+  independiente salvo evidencia material;
+- `StrategyProposal`: solución, supuestos, pasos sugeridos, capabilities/tools
+  requeridas, riesgos, incertidumbres, coste/tiempo observable y Evidence;
+- `StrategyCritique`: objeciones verificables sobre propuestas alternativas, sin
+  autoridad para modificar Policy, approvals o instrucciones gobernantes;
+- `StrategyDecision`: criterios aplicados, propuesta seleccionada o síntesis,
+  alternativas descartadas, incertidumbre residual y provenance explicable sin
+  almacenar chain-of-thought privada.
+
+Cada participante recibe un `context slice` mínimo derivado de Project Context.
+Proposal, critique y synthesis son `untrusted_data`; ninguna propuesta puede
+aprobarse a sí misma, elevar permisos ni convertir consenso en verdad.
+
+Evaluation debe usar criterios explícitos: cumplimiento del objetivo,
+compatibilidad, Evidence, riesgo, Policy, capabilities reales, privacidad,
+budget, coste/latencia observables y verificabilidad. Si ninguna propuesta
+supera el umbral, Strategy puede pedir una ronda adicional acotada, degradar a
+una ruta segura o detenerse.
+
+Budgets de deliberación deben limitar participantes, rondas, provider calls,
+tokens/bytes, coste y wall time. Strategy puede omitirla para tareas triviales o
+cuando su coste/riesgo supere el beneficio. ADR-0016 fija el protocolo de dos
+planes: Planner, Policy/Approval, Runtime y Provider Gateway gobiernan el
+workflow preliminar; Strategy nunca llama providers directamente.
+
+### 2. Runtime, Policy, Approval y Evidence --- `CURRENT/CORE`
 
 Solo Runtime convierte pasos autorizados en efectos. Policy Engine permanece
 determinista y separado de la selección de estrategia. Las aprobaciones están
@@ -121,7 +187,7 @@ Toda ejecución debe producir provenance y evidencia suficiente para distinguir:
 planificado, autorizado, enviado, observado, completado, cancelado, fallido,
 desconocido y resuelto humanamente.
 
-### 3. Provider Gateway — `CURRENT/CORE` como frontera; conectores externos sujetos a M5
+### 3. Provider Gateway --- `CURRENT/CORE` como frontera; conectores externos sujetos a M5
 
 `ProviderAdapter` y `AdapterHost` constituyen la frontera única entre Runtime y
 proveedores. Un adapter declara capacidades; no obtiene autoridad implícita.
@@ -134,15 +200,24 @@ La selección actual de ruta considera:
 - solicitud explícita de capabilities;
 - privacidad y necesidad de red.
 
+La selección futura debe mantener separados `model/capability` y
+`provider route`. Una misma capacidad puede llegar por cloud, CLI oficial,
+endpoint empresarial, runtime local/open-weight o un router intermediario
+autorizado. Un meta-provider/router es solo otra ruta gobernada: nunca decide
+Policy, Approval ni puede introducir fallback hacia un destino no autorizado.
+
 La **selección integral de provider** es `NEXT/PLANNED`. Strategy todavía no
 decide de forma completa usando:
 
-- estado de instalación/autenticación/gate;
+- identidad de model/capability y diversidad real del participante;
+- estado de instalación/autenticación/gate de cada provider route;
+- calidad/evidencia observable para la tarea, sin rankings globales fijos;
+- privacidad, destino y necesidad de red;
 - budgets y límites;
-- latencia/tiempo cuando exista evidencia;
+- latencia/tiempo/coste cuando exista evidencia;
 - recovery capabilities;
-- provenance del provider;
-- preferencia guardada del usuario.
+- provenance del modelo y provider route;
+- preferencias o restricciones guardadas del usuario.
 
 La preferencia guardada hoy es configuración informativa y no enruta
 ejecuciones. Incorporar estos criterios requerirá contratos, evidencia y tests;
@@ -150,7 +225,7 @@ no se infieren por la mera presencia de un provider en el catálogo.
 
 La existencia de un adapter no implica autorización contractual ni habilitación.
 
-### 4. Recovery semantics — `CURRENT/CORE`
+### 4. Recovery semantics --- `CURRENT/CORE`
 
 ADR-0011 separa **provider execution recovery** de **orchestration recovery**.
 
@@ -192,7 +267,7 @@ suficiente, el estado es `remote_state_unknown`. Ese estado:
 La recuperación de Trivergence debe ser segura incluso cuando el proveedor no
 ofrezca recovery exacto.
 
-### 5. Project Context — `NEXT/PLANNED`
+### 5. Project Context --- `CURRENT/CORE` mínimo
 
 Cada workspace evolucionará hacia un contexto operacional explícito que pueda
 reunir, con límites y provenance:
@@ -211,7 +286,7 @@ reunir, con límites y provenance:
 No es una bolsa ilimitada de prompts. Debe ser seleccionable, versionable,
 auditable y respetar modo privado y retención.
 
-### 6. Project Intelligence / Knowledge Layer — `NEXT/PLANNED`
+### 6. Project Intelligence / Knowledge Layer --- `NEXT/PLANNED`
 
 Trivergence debe poder construir conocimiento consultable del proyecto sin
 convertir toda la información en memoria permanente.
@@ -234,7 +309,7 @@ Detecta deriva, aporta evidencia y propone un cambio.
 Embeddings y grafo de conocimiento son implementaciones posibles, no requisitos
 del core. Deben justificar coste, privacidad y complejidad.
 
-### 7. Agent Runtime y perfiles por capacidades — `CURRENT/CORE` mínimo + `NEXT/PLANNED`
+### 7. Agent Runtime y perfiles por capacidades --- `CURRENT/CORE` mínimo + `NEXT/PLANNED`
 
 Los agentes se definen por **capabilities, permisos, budgets y
 responsabilidades**, no por personajes decorativos.
@@ -250,7 +325,7 @@ Un perfil puede declarar:
 - rol operativo;
 - capacidades requeridas;
 - tools permitidas;
-- providers compatibles;
+- requisitos abstractos de modelo/capability y ejecución, sin fijar provider;
 - acceso a conocimiento/memoria;
 - límites de red y efectos;
 - budget;
@@ -260,15 +335,24 @@ Un perfil puede declarar:
 Strategy puede formar equipos dinámicos. La cantidad de agentes no se fija en
 tres ni en ningún número mágico.
 
-La ejecución paralela futura usa fan-out/fan-in controlado:
+El fan-out/fan-in futuro tiene **dos usos distintos** que comparten una
+infraestructura acotada:
 
-`objetivo → subtareas independientes → ejecuciones acotadas → evaluación → síntesis`
+1. **deliberación de estrategia:** varios participantes generan proposals y
+   critiques antes del plan ejecutable;
+2. **ejecución paralela:** subtareas realmente independientes se ejecutan y
+   luego se reúnen mediante evaluación/síntesis.
+
+`objetivo → [propuestas paralelas → crítica/evaluación → estrategia] → plan → [subtareas paralelas] → fan-in → verificación`
 
 Debe existir límite de concurrencia, budget agregado, cancelación, provenance
-por rama y reglas de degradación. No se paraleliza cuando aumente riesgo sin
-beneficio demostrable.
+por rama y reglas de degradación. La delegación dinámica futura debe ser acotada
+por Planner/Policy/budgets. Cada rama recibe un **context slice** mínimo
+derivado de Project Context y referencias autorizadas, no una copia
+indiscriminada del contexto global. Ningún subagente convierte su output en
+autoridad.
 
-### 8. Tool Gateway mediante MCP — `NEXT/PLANNED`
+### 8. Tool Gateway mediante MCP --- `NEXT/PLANNED`
 
 Trivergence podrá actuar como host/cliente de MCP para descubrir y usar tools,
 resources y prompts mediante una frontera común.
@@ -291,7 +375,12 @@ Requisitos mínimos:
 
 Trivergence no se convierte en un simple lanzador de servidores MCP.
 
-### 9. Agent Gateway mediante A2A — `LATER/EXPERIMENTAL`
+El Tool Gateway debe poder normalizar también research/búsqueda y retrieval con
+citas, documentos, diseño, voz, imagen, video y otras capacidades multimodales.
+Integrar una capability no convierte su servicio en provider general de
+razonamiento ni le otorga autoridad adicional.
+
+### 9. Agent Gateway mediante A2A --- `LATER/EXPERIMENTAL`
 
 La interoperabilidad con agentes externos debe ocurrir mediante una frontera de
 agente, no incorporando un framework de agentes como núcleo.
@@ -312,7 +401,7 @@ La frontera debe poder modelar:
 A2A es el estándar candidato para esta frontera. Su adopción requiere ADR y
 threat model específicos.
 
-### 10. Execution/Sandbox Gateway — `NEXT/PLANNED`
+### 10. Execution Gateway --- `CURRENT/CORE` mínimo + aislamiento `NEXT/PLANNED`
 
 El razonamiento y la ejecución son responsabilidades separadas. Una capacidad
 que propone una acción no obtiene automáticamente el entorno que la ejecuta.
@@ -327,7 +416,7 @@ La abstracción futura de ejecución podrá elegir, según policy:
 Todo backend debe declarar filesystem, red, procesos, persistencia, recursos,
 cancelación, cleanup y evidencia. La implementación concreta es intercambiable.
 
-### 11. Browser/Web Automation — `LATER/EXPERIMENTAL`
+### 11. Browser/Web Automation --- `LATER/EXPERIMENTAL`
 
 La automatización web se modelará como tools con niveles de riesgo, no como
 acceso irrestricto al navegador:
@@ -343,7 +432,7 @@ extraen cookies, tokens ni almacenes internos del navegador. Una sesión
 autenticada solo puede utilizarse mediante una interfaz autorizada que preserve
 control del usuario y aislamiento.
 
-### 12. Durable Workflow Runtime — `CURRENT/CORE` mínimo
+### 12. Durable Workflow Runtime --- `CURRENT/CORE` mínimo
 
 P3-E1 implementa estado durable local-first para:
 
@@ -372,7 +461,15 @@ inmutable respecto del historial original, no puede representar
 `remote_state_unknown` y ninguna rama puede repetir efectos externos sin nueva
 autorización.
 
-### 13. Telemetry y Trivergence Trace — `NEXT/PLANNED`
+### 13. Artifacts versionados --- `NEXT/PLANNED`
+
+Los resultados útiles de agentes y tools no se reducen a texto. Trivergence debe
+poder representar artifacts como código, documentos, UI, reportes, configuración
+y media mediante identidad, tipo, versión, digest, productor, provenance,
+Evidence y estado. Un artifact no es automáticamente verdad, aprobación ni
+Memory.
+
+### 14. Telemetry y Trivergence Trace --- `NEXT/PLANNED`
 
 Cada run debe poder representarse como una traza correlacionada:
 
@@ -394,7 +491,7 @@ exportación interoperable. Exportar telemetría es opt-in y debe sanitizar dato
 
 La telemetría no reemplaza la audit chain ni la evidencia de seguridad.
 
-### 14. Memory y Knowledge Graph — `CURRENT/CORE` limitado + `LATER/EXPERIMENTAL`
+### 15. Memory y Knowledge Graph --- `CURRENT/CORE` limitado + `LATER/EXPERIMENTAL`
 
 La memoria actual por workspace mantiene límites, TTL, poda, borrado y
 provenance.
@@ -412,7 +509,7 @@ La evolución puede distinguir:
 Un grafo relacional/temporal es experimental. No debe inferir hechos
 persistentes sin provenance ni convertir outputs de IA en verdad del proyecto.
 
-### 15. Capability Discovery y extensibilidad — `NEXT/PLANNED`
+### 16. Capability Discovery y extensibilidad --- `NEXT/PLANNED`
 
 El Registry evolucionará para representar de manera uniforme capacidades de:
 
@@ -422,7 +519,10 @@ El Registry evolucionará para representar de manera uniforme capacidades de:
 - execution backends;
 - knowledge;
 - memory;
-- workflows.
+- workflows;
+- research/search/retrieval/citation;
+- artifacts;
+- diseño, voz, imagen, video y otras modalidades.
 
 Cada capability debe tener identidad/version, schema, permisos, riesgos,
 budgets, provenance, disponibilidad y evidencia de health.
@@ -437,17 +537,19 @@ propio.
 La dirección aprobada no significa implementar todo simultáneamente. El orden
 preferido es:
 
-1. **P3-0:** documentación, ownership y ADRs previos;
-2. **P3-0.1:** revisión técnica y aceptación de ADR-0012 a ADR-0015;
-3. **P3-A1:** Project Context mínimo;
-4. **P3-D0:** contrato de Execution Gateway;
-5. **P3-E1:** estado durable del Workflow Runtime;
-6. **P3-B1:** Agent Profiles declarativos;
-7. **P3-B2:** fan-out/fan-in acotado;
-8. **P3-C:** Tool Gateway MCP;
-9. **P3-A2:** Project Intelligence;
-10. **P3-F1:** Trivergence Trace;
-11. **P3-F2:** exporter OpenTelemetry opt-in.
+1.  **P3-0:** documentación, ownership y ADRs previos;
+2.  **P3-0.1:** revisión técnica y aceptación de ADR-0012 a ADR-0015;
+3.  **P3-A1:** Project Context mínimo;
+4.  **P3-D0:** contrato de Execution Gateway;
+5.  **P3-E1:** estado durable del Workflow Runtime;
+6.  **P3-B1:** Agent Profiles declarativos;
+7.  **P3-B2.0:** contrato de Strategy Deliberation;
+8.  **P3-B2.1:** fan-out/fan-in acotado, context slicing y durable branch state;
+9.  **P3-B2.2:** deliberación multi-IA sobre el substrate B2.1;
+10. **P3-C:** Tool Gateway MCP;
+11. **P3-A2:** Project Intelligence;
+12. **P3-F1:** Trivergence Trace;
+13. **P3-F2:** exporter OpenTelemetry opt-in.
 
 Después, y exclusivamente como `LATER/EXPERIMENTAL`, pueden evaluarse Agent
 Gateway A2A, browser/web automation, knowledge graph, workflow branching y
@@ -461,21 +563,23 @@ una dependencia real lo exige, pero debe documentar el motivo.
 Cada concepto tiene una sola responsabilidad principal. Ningún hito futuro puede
 crear una segunda fuente de verdad:
 
-| Concepto             | Responsabilidad principal                                                         | No debe convertirse en                                  |
-| -------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| Project Context      | Snapshot versionado de contexto operativo permitido para una decisión o ejecución | almacén maestro de memoria o auditoría                  |
-| Project Intelligence | Índice derivado y reconstruible sobre fuentes autorizadas                         | verdad persistente del proyecto                         |
-| Memory               | Conocimiento persistido y gobernado por retención, privacidad y provenance        | registro de ejecución append-only                       |
-| Audit                | Registro append-only de hechos de ejecución                                       | evidencia del contenido completo ni índice de búsqueda  |
-| Evidence             | Prueba verificable de resultados y acciones                                       | historial mutable o telemetría auxiliar                 |
-| Trace                | Proyección correlacionada de audit, evidence y provenance                         | nueva autoridad de estado                               |
-| Runtime              | Estado y transiciones de ejecución                                                | catálogo de capabilities o protocolo de provider        |
-| Effect Assessment    | Evaluación versionada de severidad y compensación producida por Planner           | reclasificaciones independientes por cada consumidor    |
-| Capability Registry  | Estado normalizado de capacidades observadas                                      | ejecutor o trust store implícito                        |
-| Provider Gateway     | `ProviderAdapter` + `AdapterHost` + dispatcher existentes                         | segundo camino de ejecución                             |
-| Execution Gateway    | Frontera v1 implementada sobre ejecución local supervisada                        | policy engine, Runtime, sandbox o tool protocol         |
-| Tool Gateway         | Adaptación de herramientas hacia capabilities                                     | supervisor de procesos independiente                    |
-| Workflow Snapshot    | Manifest inmutable de un punto confirmado con referencias y digests               | copia de Memory/Context/Audit/Evidence o estado UNKNOWN |
+| Concepto              | Responsabilidad principal                                                         | No debe convertirse en                                    |
+| --------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Project Context       | Snapshot versionado de contexto operativo permitido para una decisión o ejecución | almacén maestro de Memory o Audit                         |
+| Strategy Deliberation | Propuestas, crítica y decisión explicable dentro de Strategy                      | votación por marca, Policy, Approval o ejecutor           |
+| Project Intelligence  | Índice derivado y reconstruible sobre fuentes autorizadas                         | verdad persistente del proyecto                           |
+| Memory                | Conocimiento persistido y gobernado por retención, privacidad y provenance        | registro append-only de ejecución                         |
+| Audit                 | Registro append-only de hechos de ejecución                                       | evidencia del contenido completo o índice de búsqueda     |
+| Evidence              | Prueba verificable de resultados y acciones                                       | historial mutable o telemetría auxiliar                   |
+| Trace                 | Proyección correlacionada de Audit, Evidence y provenance                         | nueva autoridad de estado                                 |
+| Runtime               | Estado y transiciones de ejecución                                                | catálogo de capabilities o protocolo de provider          |
+| Effect Assessment     | Evaluación versionada de severidad y compensación producida por Planner           | reclasificaciones independientes por consumidor           |
+| Capability Registry   | Estado normalizado de capabilities observadas                                     | ejecutor o trust store implícito                          |
+| Agent Profile Catalog | Configuración declarativa versionada de responsabilidades y límites               | fuente de capabilities, permisos o identidad de provider  |
+| Provider Gateway      | `ProviderAdapter` + `AdapterHost` + dispatcher existentes                         | segundo camino de ejecución                               |
+| Execution Gateway     | Frontera v1 implementada sobre ejecución local supervisada                        | Policy Engine, Runtime, sandbox o tool protocol           |
+| Tool Gateway          | Adaptación futura de herramientas hacia capabilities                              | supervisor de procesos independiente                      |
+| Workflow Snapshot     | Manifest inmutable de un punto confirmado con referencias y digests               | copia de Memory/Context/Audit/Evidence o estado `UNKNOWN` |
 
 La explicación extendida y las reglas de composición están en
 `docs/architecture/ownership.md`.
@@ -502,15 +606,18 @@ esta regla. Hasta entonces:
 
 ## Zonas de confianza
 
-1. **Renderer:** UI sin privilegios.
-2. **Preload:** puente mínimo con métodos nominados.
-3. **Main/coordinator:** ciclo de vida, validación y autorización de contratos.
-4. **Runtime privilegiado:** workers y efectos supervisados.
-5. **Gateways externos:** providers, tools, agents y execution backends tratados
-   como fronteras no confiables salvo evidencia específica.
+1.  **Renderer:** UI sin privilegios.
+2.  **Preload:** puente mínimo con métodos nominados.
+3.  **Main/coordinator:** ciclo de vida, validación y autorización de contratos.
+4.  **Runtime privilegiado:** workers y efectos supervisados.
+5.  **Gateways externos:** providers, tools, agents y execution backends
+    tratados como fronteras no confiables salvo evidencia específica.
 
-Todo input externo —archivo, web, tool, provider, agent, servidor o output de
-modelo— se trata como datos, nunca como autoridad.
+Todo input externo ---archivo, web, tool, provider, agent, servidor o output de
+modelo--- se trata como datos, nunca como autoridad.
+
+Proposal, critique y synthesis se rigen por la misma regla: son datos
+externos/no confiables hasta evaluación. El consenso no otorga autoridad.
 
 ## Stack de referencia
 
@@ -581,6 +688,7 @@ Documentos gobernantes incluyen, como mínimo:
 - `docs/architecture/adr/0013-integrated-interrupted-recovery-conformance.md`
 - `docs/architecture/adr/0014-conservative-operation-effect-classification.md`
 - `docs/architecture/adr/0015-workflow-execution-snapshots.md`
+- `docs/architecture/adr/0016-strategy-deliberation-contract.md`
 - `docs/providers/gate-methodology.md`
 - `docs/security/threat-model.md`
 - `docs/design/ui-spec.md`
@@ -618,17 +726,17 @@ Una capacidad no se marca `DONE` hasta que, según su riesgo:
 
 Antes de modificar código:
 
-1. leer Prompt Maestro, Roadmap, Implementation Status y ADR relevantes;
-2. identificar el hito activo y su puerta de salida;
-3. auditar el código existente antes de diseñar una abstracción nueva;
-4. reutilizar contratos existentes cuando sean correctos;
-5. no implementar capacidades `PLANNED/EXPERIMENTAL` fuera del hito pedido;
-6. no habilitar proveedores, tools, agentes externos, red o credenciales por
-   inferencia;
-7. no rebajar seguridad para hacer pasar una prueba;
-8. ejecutar gates frescos y documentar evidencia;
-9. detenerse ante una dependencia contractual/externa real en lugar de
-   simularla.
+1.  leer Prompt Maestro, Roadmap, Implementation Status y ADR relevantes;
+2.  identificar el hito activo y su puerta de salida;
+3.  auditar el código existente antes de diseñar una abstracción nueva;
+4.  reutilizar contratos existentes cuando sean correctos;
+5.  no implementar capacidades `PLANNED/EXPERIMENTAL` fuera del hito pedido;
+6.  no habilitar proveedores, tools, agentes externos, red o credenciales por
+    inferencia;
+7.  no rebajar seguridad para hacer pasar una prueba;
+8.  ejecutar gates frescos y documentar evidencia;
+9.  detenerse ante una dependencia contractual/externa real en lugar de
+    simularla.
 
 **Trivergence coordina capacidades; no confunde disponibilidad con autorización,
 ejecución con éxito ni incertidumbre con fallo.**

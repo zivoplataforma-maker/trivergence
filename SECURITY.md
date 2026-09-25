@@ -33,6 +33,18 @@ High-priority classes include:
 - secret, token or credential leakage;
 - unsafe persistence or orphaned process execution;
 - provider-authentication boundary violations;
+- model/provider substitution, hidden fallback or routing to an unauthorized
+  destination;
+- tool/capability confusion where availability is mistaken for permission;
+- cross-agent context leakage during delegated or parallel work;
+- proposal/critique poisoning where one AI output attempts to become a governing
+  instruction for another participant;
+- false consensus caused by counting multiple routes to the same model as
+  independent evidence;
+- deliberation budget amplification, recursive delegation or unbounded critique
+  loops;
+- evaluator manipulation, fabricated citations/evidence or consensus used to
+  bypass Policy/Approval;
 - update, packaging and software-supply-chain compromise;
 - audit/provenance tampering that could hide what executed.
 
@@ -41,7 +53,17 @@ High-priority classes include:
 Trivergence aims to fail closed when trust or authorization cannot be
 established. Provider detection does not imply execution authorization.
 Privileged operations should be explicit, attributable, cancellable where
-practical and protected by policy/approval boundaries.
+practical and protected by policy/approval boundaries. Automatic model/provider
+selection, delegation, fallback and tool resolution remain inside the same trust
+model and may optimize only among compatible, available, gate-authorized routes
+allowed by current policy and user constraints.
+
+Future Strategy Deliberation must treat every proposal, critique and synthesized
+candidate as untrusted data. No participant can grant itself or another
+participant authority, approvals or capabilities. Majority agreement does not
+establish truth or permission. Context slices disclose only the minimum sources
+needed, and deliberation is bounded by participant, round, call, token/byte,
+cost and wall-time budgets.
 
 The project does not intentionally scrape browser sessions, extract provider
 cookies or OAuth tokens, impersonate official clients, or bypass provider
@@ -63,4 +85,6 @@ SLA.
 For architecture-level security context, read the
 [threat model](docs/security/threat-model.md). File, persistence, installer and
 update hardening are covered by the
-[M7 threat model](docs/security/threat-model-m7.md).
+[M7 threat model](docs/security/threat-model-m7.md). The accepted but not yet
+implemented deliberation design has its own
+[P3-B2 threat model](docs/security/threat-model-p3-b2.md).
