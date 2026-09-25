@@ -73,8 +73,14 @@ La deliberación no se añade al workflow M6 existente. Planner deberá producir
 `DeliberationPlan` preliminar; Runtime lo ejecutará mediante sus dispatchers y
 Provider Gateway; Evaluation normalizará resultados y Strategy decidirá antes
 del plan final. P3-B2.0 solo acepta este contrato. Concurrencia, slices y estado
-durable de ramas pertenecen a P3-B2.1; proposal→critique→evaluation→synthesis a
-P3-B2.2.
+durable de ramas ya están implementados por P3-B2.1;
+proposal→critique→evaluation→synthesis pertenece a P3-B2.2.
+
+P3-B2.1 no introduce un workflow o agente alternativo. `RuntimeEngine` agenda
+ramas del plan con slots acotados; cada rama revalida el perfil exacto de P3-B1
+y recibe un slice exclusivo. El fan-in referencia Evidence existente y habilita
+la continuación dependiente únicamente cuando la policy de agregación queda
+satisfecha. Memory no se copia a slices ni a branch state.
 
 ## Contratos y cambios compatibles
 

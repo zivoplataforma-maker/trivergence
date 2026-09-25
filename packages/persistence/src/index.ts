@@ -20,6 +20,7 @@ export {
   type PersistenceHealth,
   type PersistenceMode,
   type PersistedExecutionHistoryEntry,
+  type PersistedBranchGroup,
   type PersistedMemoryEntry,
 } from "./store.js";
 export {

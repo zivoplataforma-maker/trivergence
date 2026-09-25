@@ -419,6 +419,99 @@ export const migrations: readonly Migration[] = [
         CHECK (length(agent_profiles_json) <= 2048);
     `,
   },
+  {
+    version: "0011_bounded_branch_execution",
+    sql: `
+      CREATE TABLE context_slice_manifests (
+        slice_id TEXT NOT NULL,
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        context_id TEXT NOT NULL,
+        context_revision INTEGER NOT NULL CHECK (context_revision > 0),
+        workspace_id TEXT NOT NULL,
+        objective_request_id TEXT NOT NULL,
+        group_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        manifest_json TEXT NOT NULL CHECK (length(manifest_json) <= 49152),
+        digest TEXT NOT NULL CHECK (length(digest) = 64),
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        PRIMARY KEY (slice_id, revision),
+        FOREIGN KEY (context_id, context_revision)
+          REFERENCES project_context_snapshots(context_id, revision) ON DELETE CASCADE,
+        UNIQUE (digest)
+      ) STRICT;
+
+      CREATE TRIGGER context_slice_manifests_no_update
+      BEFORE UPDATE ON context_slice_manifests
+      BEGIN
+        SELECT RAISE(ABORT, 'context slice manifests are immutable');
+      END;
+
+      CREATE TABLE branch_groups (
+        run_id TEXT NOT NULL,
+        group_id TEXT NOT NULL,
+        group_digest TEXT NOT NULL CHECK (length(group_digest) = 64),
+        lifecycle TEXT NOT NULL CHECK (lifecycle IN (
+          'pending', 'running', 'confirmed', 'degraded', 'blocked',
+          'failed', 'cancelled', 'budget_exhausted'
+        )),
+        max_concurrency INTEGER NOT NULL CHECK (max_concurrency > 0),
+        max_provider_calls INTEGER NOT NULL CHECK (max_provider_calls >= 0),
+        max_output_bytes INTEGER NOT NULL CHECK (max_output_bytes >= 0),
+        provider_calls_used INTEGER NOT NULL DEFAULT 0 CHECK (provider_calls_used >= 0),
+        output_bytes_observed INTEGER NOT NULL DEFAULT 0 CHECK (output_bytes_observed >= 0),
+        cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0, 1)),
+        fan_in_json TEXT CHECK (fan_in_json IS NULL OR length(fan_in_json) <= 65536),
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, group_id),
+        FOREIGN KEY (run_id) REFERENCES durable_workflow_executions(run_id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TABLE branch_executions (
+        run_id TEXT NOT NULL,
+        group_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        step_id TEXT NOT NULL,
+        descriptor_json TEXT NOT NULL CHECK (length(descriptor_json) <= 32768),
+        context_slice_id TEXT NOT NULL,
+        context_slice_revision INTEGER NOT NULL CHECK (context_slice_revision > 0),
+        context_slice_digest TEXT NOT NULL CHECK (length(context_slice_digest) = 64),
+        lifecycle TEXT NOT NULL CHECK (lifecycle IN (
+          'pending', 'ready', 'running', 'succeeded', 'failed',
+          'cancel_requested', 'cancelled', 'unknown', 'blocked'
+        )),
+        max_provider_calls INTEGER NOT NULL CHECK (max_provider_calls >= 0),
+        max_output_bytes INTEGER NOT NULL CHECK (max_output_bytes >= 0),
+        provider_calls_used INTEGER NOT NULL DEFAULT 0 CHECK (provider_calls_used >= 0),
+        output_bytes_observed INTEGER NOT NULL DEFAULT 0 CHECK (output_bytes_observed >= 0),
+        dispatch_id TEXT,
+        approval_id TEXT,
+        evidence_id TEXT,
+        terminal_reason TEXT,
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, group_id, branch_id),
+        FOREIGN KEY (run_id, group_id) REFERENCES branch_groups(run_id, group_id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, step_id) REFERENCES durable_workflow_steps(run_id, step_id) ON DELETE CASCADE,
+        FOREIGN KEY (context_slice_id, context_slice_revision)
+          REFERENCES context_slice_manifests(slice_id, revision) ON DELETE RESTRICT,
+        FOREIGN KEY (approval_id) REFERENCES approvals(id) ON DELETE RESTRICT,
+        FOREIGN KEY (evidence_id) REFERENCES step_evidence(id) ON DELETE RESTRICT,
+        UNIQUE (run_id, step_id)
+      ) STRICT;
+
+      CREATE INDEX context_slice_workspace_idx
+        ON context_slice_manifests(workspace_id, expires_at);
+      CREATE INDEX branch_group_lifecycle_idx
+        ON branch_groups(lifecycle, updated_at);
+      CREATE INDEX branch_execution_lifecycle_idx
+        ON branch_executions(run_id, group_id, lifecycle);
+    `,
+  },
 ];
 
 const checksum = (sql: string) =>

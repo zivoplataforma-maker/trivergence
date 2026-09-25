@@ -9,6 +9,10 @@ export {
   type ProjectContextBuildOptions,
 } from "./project-context-builder.js";
 export {
+  ContextSliceBuilder,
+  type ContextSliceBuildOptions,
+} from "./context-slice-builder.js";
+export {
   IntegrityEngine,
   payloadFromPreview,
   type DigestFunction,

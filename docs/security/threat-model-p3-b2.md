@@ -1,12 +1,14 @@
 # Threat model de Strategy Deliberation (P3-B2)
 
-Estado: diseño aceptado en P3-B2.0; controles ejecutables pendientes  
+Estado: diseño aceptado; controles del substrate B2.1 implementados,
+deliberación B2.2 pendiente  
 Fecha: 2026-09-25
 
 ## Alcance y activos
 
 Este modelo cubre la futura deliberación previa al plan final y el substrate
-fan-out/fan-in necesario para implementarla. P3-B2.0 no incorpora código.
+fan-out/fan-in que la soportará. P3-B2.1 implementa únicamente el segundo;
+proposals, critiques, evaluación deliberativa y synthesis siguen pendientes.
 
 Activos protegidos: objetivo, Project Context y sus fuentes; identidad de
 participantes/modelos/rutas; Policy/Approval; budgets; proposals, critiques,
@@ -68,6 +70,14 @@ decisión depende de criterios y evidencia disponibles. Por eso deliberación
 nunca reemplaza Policy, Approval, verificación postflight ni revisión humana en
 acciones de alto impacto.
 
-P3-B2.1 deberá demostrar aislamiento de slices, budgets agregados, cancelación y
-estado durable de ramas. P3-B2.2 deberá demostrar resistencia a poisoning, false
-consensus, evaluator manipulation y degradación explícita.
+P3-B2.1 demuestra aislamiento de slices, budgets agregados transaccionales,
+cancelación y estado durable de ramas. Los controles ejecutables incluyen
+bindings/digests exactos, profundidad uno, solo lecturas seguras, slices
+exclusivos, concurrencia acotada, `cancel_requested`, UNKNOWN conservador,
+Evidence por rama y private mode sin persistencia/red. Permanecen riesgos
+residuales de agotamiento local, terminación no confirmada y compromiso total
+del proceso/SQLite; todos fallan cerrado o quedan visibles.
+
+P3-B2.2 deberá demostrar resistencia específica a poisoning, false consensus,
+evaluator manipulation y síntesis maliciosa. Ningún control B2.1 autoriza por sí
+solo Strategy Deliberation.

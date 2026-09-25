@@ -42,6 +42,14 @@ StepEvidence ─────────┘          │
   lifecycle, revisión, expiración y contabilidad monotónica de budgets;
 - `durable_workflow_steps`: dependencias y lifecycle por step con referencias a
   approval, provider attempt y evidence; no almacena outputs completos;
+- `context_slice_manifests`: manifests derivados e inmutables ligados por
+  contexto/workspace/objective/group/branch, con referencias allowlisted,
+  expiración y digest; no persisten contenido fuente;
+- `branch_groups`: límites, lifecycle, cancel request, contadores monotónicos y
+  `FanInResult` acotado por run/grupo;
+- `branch_executions`: binding de rama a step, slice, budget, dispatch, approval
+  y Evidence; `durable_workflow_steps` sigue siendo la representación durable
+  autoritativa del step;
 - `audit_events`: metadatos acotados, secuencia y hashes anterior/actual;
 - `schema_migrations`: versión, checksum y fecha de aplicación.
 
@@ -74,6 +82,14 @@ verificables. Los outputs efímeros no se copian para fabricar resume.
 Este estado mutable y revisionado no es un `WorkflowExecutionSnapshot`. El
 snapshot inmutable de ADR-0015 continúa pendiente y `ProviderRecoveryCheckpoint`
 sigue siendo material remoto separado.
+
+P3-B2.1 extiende esta frontera con la migration `0011_bounded_branch_execution`.
+La reserva de dispatch y provider-call budget actualiza branch, group, workflow
+y step dentro de `BEGIN IMMEDIATE`; la terminación escribe Evidence y contadores
+en una transacción. Tras restart, una rama `running` o `cancel_requested` pasa a
+`unknown`, el grupo queda `blocked` y no recupera budget ni approval. Private
+mode no crea estas filas. Retención, exportación y borrado incluyen las tablas
+nuevas respetando sus foreign keys.
 
 ## Apertura y estado seguro
 

@@ -27,6 +27,9 @@ export {
 } from "./process-supervisor.js";
 export {
   RuntimeEngine,
+  type RuntimeBranchExecutionOptions,
+  type RuntimeBranchExecutionResult,
+  type RuntimeBranchGroupRecord,
   type RuntimeDependencies,
   type RuntimeExecutionOptions,
   type RuntimeExecutionResult,

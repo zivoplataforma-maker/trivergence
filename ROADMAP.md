@@ -32,6 +32,7 @@ riesgo.
 | P3-E1 — Durable Workflow State           | `DONE`            |
 | P3-B1 — Agent Profiles                   | `DONE`            |
 | P3-B2.0 — Strategy Deliberation Contract | `DONE` documental |
+| P3-B2.1 — bounded fan-out/fan-in         | `DONE`            |
 | P3-B2 — deliberación y fan-out/fan-in    | `PARTIAL`         |
 | P3 — evolución arquitectónica            | `PARTIAL`         |
 
@@ -274,11 +275,13 @@ rutas inelegibles, Planner fija las referencias y Runtime las revalida. SQLite
 conserva las referencias exactas en plan y workflow durable. El perfil no
 concede Policy ni Approval, no selecciona provider y no crea budget nuevo.
 Reference Provider continúa siendo el único ejecutable. No hay fan-out/fan-in.
+Esta frase describe el cierre de P3-B1; P3-B2.1 añadió posteriormente el
+substrate genérico sin modificar perfiles ni habilitar providers.
 
 ## P3-B2 --- deliberación y fan-out/fan-in acotado
 
-Estado: `PARTIAL`. Dependencias base: P3-B1 y P3-E1 completos. B2.0 está
-cerrado; B2.1/B2.2 continúan `PLANNED`.
+Estado: `PARTIAL`. Dependencias base: P3-B1 y P3-E1 completos. B2.0 y B2.1 están
+cerrados; B2.2 continúa `PLANNED`.
 
 P3-B2 deja de ser una sola entrega de paralelismo y se divide en tres pasos para
 no implementar concurrencia antes de definir cómo se decide una estrategia.
@@ -309,20 +312,24 @@ Documentos:
 
 ### P3-B2.1 --- bounded fan-out/fan-in substrate
 
-Estado: `PLANNED`, dependiente de P3-B2.0. **Siguiente paso mínimo
-recomendado.**
+Estado: `DONE` (2026-09-25), dependiente de P3-B2.0.
 
 Objetivo: ramas concurrentes acotadas, cancelación por rama, budget agregado,
 durable branch state, provenance y `context slicing`, reutilizables tanto para
 deliberación como para ejecución paralela futura.
 
-Puerta de salida: ninguna rama pierde estado durable, amplía autoridad, filtra
-contexto lateralmente, duplica efectos o excede budget agregado; degradación
-secuencial segura obligatoria.
+La puerta quedó verificada mediante contratos v1, `ContextSliceBuilder`,
+scheduling bounded dentro de Runtime, migration `0011_bounded_branch_execution`,
+budgets transaccionales, cancelación por rama/grupo, recovery conservador y
+fan-in con Evidence. Solo `PURE`/`READ_ONLY` efectivamente seguros son
+elegibles; private mode no persiste estado nuevo. No existe delegación recursiva
+ni provider externo. Evidencia detallada en
+[reporte P3-B2.1](docs/product/p3-b2-1-bounded-fanout-report.md).
 
 ### P3-B2.2 --- Strategy Deliberation sobre el substrate
 
-Estado: `PLANNED`, dependiente de P3-B2.1.
+Estado: `PLANNED`, dependiente de P3-B2.1. **Siguiente paso mínimo
+recomendado.**
 
 Objetivo: ejecutar proposals independientes, crítica/contraste acotado,
 Evaluation y selección/síntesis de estrategia antes del Execution Planner. La IA

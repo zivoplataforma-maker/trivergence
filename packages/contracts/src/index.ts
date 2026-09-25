@@ -660,6 +660,241 @@ export type ProjectContextSnapshot = z.infer<
   typeof projectContextSnapshotSchema
 >;
 
+const branchIdentifierSchema = z
+  .string()
+  .min(1)
+  .max(80)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u, "Invalid branch identifier");
+
+export const contextSliceUpstreamReferenceSchema = z.object({
+  stepId: z.string().min(1).max(80),
+  evidenceId: z.string().uuid(),
+  outputDigest: sha256DigestSchema,
+});
+export type ContextSliceUpstreamReference = z.infer<
+  typeof contextSliceUpstreamReferenceSchema
+>;
+
+export const contextSliceManifestSchema = z
+  .object({
+    schemaVersion: z.literal("1"),
+    id: z.string().uuid(),
+    revision: z.number().int().positive(),
+    createdAt: z.iso.datetime(),
+    expiresAt: z.iso.datetime(),
+    workspaceId: z.string().uuid(),
+    objectiveRequestId: z.string().uuid(),
+    projectContext: z.object({
+      id: z.string().uuid(),
+      revision: z.number().int().positive(),
+      digest: sha256DigestSchema,
+    }),
+    groupId: branchIdentifierSchema,
+    branchId: branchIdentifierSchema,
+    phase: z.enum(["execution", "fan_in"]),
+    sourceReferences: z.array(projectContextSourceReferenceSchema).max(32),
+    capabilityReferences: z
+      .array(projectContextCapabilityReferenceSchema)
+      .max(32),
+    upstreamResultReferences: z
+      .array(contextSliceUpstreamReferenceSchema)
+      .max(32),
+    provenance: z.object({
+      builderVersion: z.literal("1"),
+      canonicalizationVersion: z.literal("1"),
+      inputDigest: sha256DigestSchema,
+      sourceDigests: z.array(sha256DigestSchema).max(64),
+    }),
+    digest: sha256DigestSchema,
+  })
+  .superRefine((slice, context) => {
+    if (
+      slice.sourceReferences.some(
+        (reference) => reference.workspaceId !== slice.workspaceId,
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceReferences"],
+        message: "Context slices cannot cross workspaces",
+      });
+    }
+    if (Date.parse(slice.expiresAt) <= Date.parse(slice.createdAt)) {
+      context.addIssue({
+        code: "custom",
+        path: ["expiresAt"],
+        message: "Context slice expiration must follow creation",
+      });
+    }
+  });
+export type ContextSliceManifest = z.infer<typeof contextSliceManifestSchema>;
+
+export const branchBudgetSchema = z.object({
+  maxProviderCalls: z.number().int().nonnegative().max(1_000),
+  maxOutputBytes: z.number().int().nonnegative().max(1_073_741_824),
+  timeoutMs: z.number().int().min(100).max(300_000),
+});
+export type BranchBudget = z.infer<typeof branchBudgetSchema>;
+
+export const branchDescriptorSchema = z.object({
+  schemaVersion: z.literal("1"),
+  branchId: branchIdentifierSchema,
+  groupId: branchIdentifierSchema,
+  stepId: z.string().min(1).max(80),
+  parentStepId: z.string().min(1).max(80),
+  dependencies: z.array(z.string().min(1).max(80)).max(32),
+  depth: z.literal(1),
+  agentProfiles: z.array(agentProfileReferenceSchema).max(4),
+  projectContext: z.object({
+    id: z.string().uuid(),
+    revision: z.number().int().positive(),
+    digest: sha256DigestSchema,
+  }),
+  contextSlice: z.object({
+    id: z.string().uuid(),
+    revision: z.number().int().positive(),
+    digest: sha256DigestSchema,
+  }),
+  requiredCapabilities: z.array(capabilityIdSchema).min(1).max(32),
+  budget: branchBudgetSchema,
+  policyBinding: z.object({
+    rulesetVersion: z.string().min(1).max(40),
+    decision: z.enum(["allow", "require_approval"]),
+    actionDigest: sha256DigestSchema,
+    approvalId: z.string().uuid().optional(),
+  }),
+  executionTarget: z.object({
+    subsystem: subsystemKindSchema,
+    capabilityId: capabilityIdSchema,
+  }),
+  expectedResult: z.object({
+    evidenceRequired: z.literal(true),
+    outputRequired: z.boolean(),
+  }),
+  provenance: z.object({
+    plannerVersion: z.string().min(1).max(40),
+    planDigest: sha256DigestSchema,
+    descriptorDigest: sha256DigestSchema,
+  }),
+});
+export type BranchDescriptor = z.infer<typeof branchDescriptorSchema>;
+
+export const branchGroupSchema = z
+  .object({
+    schemaVersion: z.literal("1"),
+    groupId: branchIdentifierSchema,
+    planId: z.string().uuid(),
+    planDigest: sha256DigestSchema,
+    workspaceId: z.string().uuid(),
+    objectiveRequestId: z.string().uuid(),
+    parentStepId: z.string().min(1).max(80),
+    maxConcurrency: z.number().int().min(1).max(16),
+    maxDepth: z.literal(1),
+    fanInPolicy: z.object({
+      mode: z.enum(["all_succeeded", "allow_partial"]),
+      minimumSucceeded: z.number().int().min(1).max(64),
+    }),
+    budget: branchBudgetSchema,
+    branches: z.array(branchDescriptorSchema).min(2).max(64),
+    digest: sha256DigestSchema,
+  })
+  .superRefine((group, context) => {
+    const ids = new Set(group.branches.map((branch) => branch.branchId));
+    const stepIds = new Set(group.branches.map((branch) => branch.stepId));
+    if (ids.size !== group.branches.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Branch IDs must be unique",
+      });
+    }
+    if (stepIds.size !== group.branches.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Branch step IDs must be unique",
+      });
+    }
+    if (
+      group.branches.some(
+        (branch) =>
+          branch.groupId !== group.groupId ||
+          branch.parentStepId !== group.parentStepId,
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Branch bindings must match their group",
+      });
+    }
+    if (group.fanInPolicy.minimumSucceeded > group.branches.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["fanInPolicy", "minimumSucceeded"],
+        message: "Fan-in threshold exceeds branch count",
+      });
+    }
+  });
+export type BranchGroup = z.infer<typeof branchGroupSchema>;
+
+export const branchExecutionLifecycleSchema = z.enum([
+  "pending",
+  "ready",
+  "running",
+  "succeeded",
+  "failed",
+  "cancel_requested",
+  "cancelled",
+  "unknown",
+  "blocked",
+]);
+export type BranchExecutionLifecycle = z.infer<
+  typeof branchExecutionLifecycleSchema
+>;
+
+export const branchExecutionStateSchema = z.object({
+  runId: z.string().uuid(),
+  groupId: branchIdentifierSchema,
+  branchId: branchIdentifierSchema,
+  stepId: z.string().min(1).max(80),
+  lifecycle: branchExecutionLifecycleSchema,
+  revision: z.number().int().positive(),
+  providerCallsUsed: z.number().int().nonnegative(),
+  outputBytesObserved: z.number().int().nonnegative(),
+  dispatchId: z.string().uuid().optional(),
+  evidenceId: z.string().uuid().optional(),
+  terminalReason: z.string().min(1).max(500).optional(),
+  updatedAt: z.iso.datetime(),
+});
+export type BranchExecutionState = z.infer<typeof branchExecutionStateSchema>;
+
+export const fanInResultSchema = z.object({
+  schemaVersion: z.literal("1"),
+  runId: z.string().uuid(),
+  groupId: branchIdentifierSchema,
+  status: z.enum([
+    "confirmed",
+    "degraded",
+    "blocked",
+    "failed",
+    "cancelled",
+    "budget_exhausted",
+  ]),
+  expectedBranches: z.number().int().positive(),
+  succeededBranches: z.number().int().nonnegative(),
+  branchResults: z
+    .array(
+      z.object({
+        branchId: branchIdentifierSchema,
+        lifecycle: branchExecutionLifecycleSchema,
+        evidenceId: z.string().uuid().optional(),
+        outputDigest: sha256DigestSchema.optional(),
+      }),
+    )
+    .max(64),
+  reason: z.string().min(1).max(500),
+  digest: sha256DigestSchema,
+});
+export type FanInResult = z.infer<typeof fanInResultSchema>;
+
 export const orchestrationIntegrityPayloadSchema = z.object({
   request: orchestrationRequestSchema,
   projectContext: projectContextSnapshotSchema,

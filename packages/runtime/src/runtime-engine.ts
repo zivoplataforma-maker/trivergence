@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import {
   approvalRecordSchema,
+  branchExecutionStateSchema,
+  branchGroupSchema,
   classifyOperationEffect,
+  fanInResultSchema,
   durableWorkflowExecutionSchema,
   durableWorkflowStepSchema,
   executionRunSchema,
@@ -14,9 +17,13 @@ import {
   type ApprovalRecord,
   type AuditEventType,
   type AuditPayload,
+  type BranchExecutionState,
+  type BranchGroup,
+  type ContextSliceManifest,
   type DurableWorkflowExecution,
   type DurableWorkflowStep,
   type ExecutionRun,
+  type FanInResult,
   type OrchestrationPreview,
   type PlanExecutionBinding,
   type PlannedStep,
@@ -29,6 +36,7 @@ import {
 } from "@trivergence/contracts";
 import {
   canonicalizeJson,
+  ContextSliceBuilder,
   type DigestFunction,
 } from "@trivergence/orchestration-engine";
 
@@ -39,6 +47,29 @@ import {
   type DispatchResult,
   type StepDispatcher,
 } from "./dispatcher-registry.js";
+
+export interface RuntimeBranchGroupRecord {
+  readonly runId: string;
+  readonly groupId: string;
+  readonly groupDigest: string;
+  readonly lifecycle:
+    | "pending"
+    | "running"
+    | "confirmed"
+    | "degraded"
+    | "blocked"
+    | "failed"
+    | "cancelled"
+    | "budget_exhausted";
+  readonly maxConcurrency: number;
+  readonly maxProviderCalls: number;
+  readonly maxOutputBytes: number;
+  readonly providerCallsUsed: number;
+  readonly outputBytesObserved: number;
+  readonly cancelRequested: boolean;
+  readonly fanIn?: FanInResult;
+  readonly revision: number;
+}
 
 export interface RuntimePersistence {
   assertPrivilegedActionsAvailable(): void;
@@ -91,6 +122,60 @@ export interface RuntimePersistence {
     updatedAt: string,
     reason: string,
   ): void;
+  createBranchGroup(
+    runId: string,
+    group: BranchGroup,
+    slices: readonly ContextSliceManifest[],
+    createdAt: string,
+    expiresAt: string,
+  ): RuntimeBranchGroupRecord;
+  findContextSlice(
+    sliceId: string,
+    revision: number,
+  ): ContextSliceManifest | undefined;
+  findBranchGroup(
+    runId: string,
+    groupId: string,
+  ): RuntimeBranchGroupRecord | undefined;
+  listBranchExecutions(runId: string, groupId: string): BranchExecutionState[];
+  startBranchExecution(
+    runId: string,
+    groupId: string,
+    branchId: string,
+    dispatchId: string,
+    providerCall: boolean,
+    updatedAt: string,
+    approvalId?: string,
+  ): BranchExecutionState;
+  finishBranchExecution(
+    runId: string,
+    groupId: string,
+    branchId: string,
+    evidence: StepEvidence,
+    outputBytes: number,
+  ): BranchExecutionState;
+  markBranchUnknown(
+    runId: string,
+    groupId: string,
+    branchId: string,
+    updatedAt: string,
+    reason: string,
+  ): void;
+  requestBranchGroupCancellation(
+    runId: string,
+    groupId: string,
+    updatedAt: string,
+  ): BranchExecutionState[];
+  requestBranchCancellation(
+    runId: string,
+    groupId: string,
+    branchId: string,
+    updatedAt: string,
+  ): BranchExecutionState;
+  recordFanInResult(
+    result: FanInResult,
+    updatedAt: string,
+  ): RuntimeBranchGroupRecord;
   saveProviderCheckpoint(
     checkpoint: ProviderCheckpointRecord,
   ): ProviderCheckpointRecord;
@@ -179,6 +264,17 @@ export interface RuntimeExecutionResult {
   readonly outputs?: Readonly<Record<string, unknown>>;
 }
 
+export interface RuntimeBranchExecutionOptions extends Omit<
+  RuntimeExecutionOptions,
+  "resumeRunId" | "recoveryCheckpointIds"
+> {
+  readonly contextSlices: readonly ContextSliceManifest[];
+}
+
+export interface RuntimeBranchExecutionResult extends RuntimeExecutionResult {
+  readonly fanIn?: FanInResult;
+}
+
 interface ResolvedStep {
   readonly step: PlannedStep;
   readonly dispatcher: StepDispatcher;
@@ -214,12 +310,22 @@ export class RuntimeEngine {
   readonly #validateAgentProfiles?: RuntimeDependencies["validateAgentProfiles"];
   readonly #clock: () => Date;
   readonly #idFactory: () => string;
+  readonly #contextSlices: ContextSliceBuilder;
   readonly #activeRuns = new Map<
     string,
     {
       readonly controller: AbortController;
       readonly planId: string;
       providerAttemptId?: string;
+      readonly branches: Map<
+        string,
+        {
+          readonly controller: AbortController;
+          readonly groupId: string;
+          readonly branchId: string;
+          providerAttemptId?: string;
+        }
+      >;
     }
   >();
 
@@ -232,6 +338,7 @@ export class RuntimeEngine {
     this.#validateAgentProfiles = dependencies.validateAgentProfiles;
     this.#clock = dependencies.clock ?? (() => new Date());
     this.#idFactory = dependencies.idFactory ?? randomUUID;
+    this.#contextSlices = new ContextSliceBuilder(this.#sha256, this.#clock);
   }
 
   requestApproval(
@@ -573,7 +680,16 @@ export class RuntimeEngine {
       readonly planId: string;
       providerAttemptId?: string;
       currentStepId?: string;
-    } = { controller, planId: preview.plan.id };
+      readonly branches: Map<
+        string,
+        {
+          readonly controller: AbortController;
+          readonly groupId: string;
+          readonly branchId: string;
+          providerAttemptId?: string;
+        }
+      >;
+    } = { controller, planId: preview.plan.id, branches: new Map() };
     this.#activeRuns.set(run.id, activeRun);
     const completedSteps = new Set(
       resumeSteps
@@ -957,6 +1073,632 @@ export class RuntimeEngine {
     }
   }
 
+  async executeBranchGroup(
+    input: OrchestrationPreview,
+    groupInput: BranchGroup,
+    options: RuntimeBranchExecutionOptions,
+  ): Promise<RuntimeBranchExecutionResult> {
+    let preview: OrchestrationPreview;
+    let group: BranchGroup;
+    const resolvedByStep = new Map<string, ResolvedStep>();
+    const slices = new Map<string, ContextSliceManifest>();
+    try {
+      preview = this.#validatePreview(input);
+      group = branchGroupSchema.parse(groupInput);
+      this.#validateBranchGroup(preview, group, options.contextSlices);
+      for (const branch of group.branches) {
+        const step = preview.plan.steps.find(
+          (candidate) => candidate.id === branch.stepId,
+        );
+        if (!step) throw new Error(`Branch step not found: ${branch.stepId}`);
+        resolvedByStep.set(step.id, this.#resolveStep(preview, step));
+        const slice = options.contextSlices.find(
+          (candidate) => candidate.id === branch.contextSlice.id,
+        );
+        if (!slice)
+          throw new Error(`Context slice not found: ${branch.branchId}`);
+        slices.set(
+          branch.branchId,
+          this.#contextSlices.verify(
+            slice,
+            preview.projectContext,
+            branch.branchId,
+            group.groupId,
+          ),
+        );
+      }
+    } catch (error) {
+      return this.#blocked(
+        input.plan?.id ?? input.request?.id ?? "unknown",
+        error,
+        input.request?.privacyMode !== "standard",
+      );
+    }
+
+    if (
+      [...this.#activeRuns.values()].some(
+        (active) => active.planId === preview.plan.id,
+      )
+    ) {
+      return this.#blocked(
+        preview.plan.id,
+        new Error("This plan already has an active execution"),
+        preview.request.privacyMode !== "standard",
+      );
+    }
+
+    for (const branch of group.branches) {
+      const resolved = resolvedByStep.get(branch.stepId)!;
+      if (resolved.policy.decision === "deny") {
+        return this.#blocked(
+          branch.branchId,
+          new Error(`Policy denied branch ${branch.branchId}`),
+          preview.request.privacyMode !== "standard",
+        );
+      }
+      if (resolved.policy.decision === "require_approval") {
+        const approvalId = options.approvalIds?.[branch.stepId];
+        const approval = approvalId
+          ? this.#persistence.findApproval(approvalId)
+          : undefined;
+        if (
+          !approval ||
+          approval.status !== "granted" ||
+          approval.id !== branch.policyBinding.approvalId ||
+          approval.planId !== preview.plan.id ||
+          approval.stepId !== branch.stepId ||
+          approval.planDigest !== preview.planIntegrity.digest ||
+          approval.actionDigest !== branch.policyBinding.actionDigest ||
+          approval.actionDigest !== resolved.approvalDigest
+        ) {
+          return {
+            status: "approval_required",
+            reason: `Branch approval is absent or out of scope: ${branch.branchId}`,
+            evidenceCount: 0,
+          };
+        }
+      }
+    }
+
+    const durable = preview.request.privacyMode === "standard";
+    const now = this.#clock().toISOString();
+    const run = executionRunSchema.parse({
+      id: options.runId ?? this.#idFactory(),
+      requestId: preview.request.id,
+      planId: preview.plan.id,
+      registrySnapshotId: preview.registrySnapshot.id,
+      planDigest: preview.planIntegrity.digest,
+      status: "planned",
+      createdAt: now,
+      updatedAt: now,
+    });
+    this.#persistence.createRun(run);
+    if (durable) {
+      const expiresAt = new Date(
+        Date.parse(now) +
+          preview.projectContext.governance.retentionDays * 86_400_000,
+      ).toISOString();
+      this.#persistence.createDurableWorkflow(
+        durableWorkflowExecutionSchema.parse({
+          schemaVersion: "1",
+          runId: run.id,
+          workflowId: preview.plan.id,
+          workflowDefinitionVersion: preview.plan.plannerVersion,
+          planDigest: run.planDigest,
+          projectContextId: preview.projectContext.id,
+          projectContextRevision: preview.projectContext.revision,
+          projectContextDigest: preview.projectContext.digest,
+          workspaceId: preview.projectContext.workspace.id,
+          lifecycle: "prepared",
+          revision: 1,
+          budget: {
+            limitsDigest: this.#sha256(
+              canonicalizeJson(preview.projectContext.budget.limits),
+            ),
+            dispatchedStepIds: [],
+            providerCallsUsed: 0,
+            outputBytesObserved: 0,
+          },
+          createdAt: now,
+          updatedAt: now,
+          expiresAt,
+        }),
+        preview.plan.steps.map((step) => {
+          const isBranch = group.branches.some(
+            (branch) => branch.stepId === step.id,
+          );
+          return durableWorkflowStepSchema.parse({
+            runId: run.id,
+            planId: run.planId,
+            stepId: step.id,
+            capabilityId: step.capabilityId,
+            dependencies: isBranch ? [] : step.dependsOn,
+            lifecycle:
+              isBranch || step.dependsOn.length === 0 ? "ready" : "pending",
+            revision: 1,
+            dispatchStarted: false,
+            effectClass: classifyOperationEffect(step.action),
+            agentProfiles: step.agentProfiles ?? [],
+            createdAt: now,
+            updatedAt: now,
+          });
+        }),
+      );
+      this.#persistence.updateDurableWorkflowLifecycle(run.id, "running", now);
+      this.#persistence.createBranchGroup(
+        run.id,
+        group,
+        [...slices.values()],
+        now,
+        expiresAt,
+      );
+    }
+    this.#persistence.updateRunStatus(run.id, "running", now);
+
+    const rootController = new AbortController();
+    const activeRun = {
+      controller: rootController,
+      planId: preview.plan.id,
+      branches: new Map<
+        string,
+        {
+          readonly controller: AbortController;
+          readonly groupId: string;
+          readonly branchId: string;
+          providerAttemptId?: string;
+        }
+      >(),
+    };
+    this.#activeRuns.set(run.id, activeRun);
+    const localStates = new Map<string, BranchExecutionState>();
+    const outputs: Record<string, unknown> = {};
+    const evidenceByBranch = new Map<
+      string,
+      { evidenceId: string; outputDigest?: string }
+    >();
+    let cursor = 0;
+    const orderedBranches = [...group.branches].sort((left, right) =>
+      left.branchId.localeCompare(right.branchId),
+    );
+
+    const executeOne = async (branch: BranchGroup["branches"][number]) => {
+      if (rootController.signal.aborted) return;
+      const resolved = resolvedByStep.get(branch.stepId)!;
+      const controller = new AbortController();
+      const key = `${group.groupId}\u0000${branch.branchId}`;
+      activeRun.branches.set(key, {
+        controller,
+        groupId: group.groupId,
+        branchId: branch.branchId,
+      });
+      const abort = () => controller.abort();
+      rootController.signal.addEventListener("abort", abort, { once: true });
+      let consumedApproval: ApprovalRecord | undefined;
+      try {
+        if (resolved.policy.decision === "require_approval") {
+          const approvalId = options.approvalIds?.[branch.stepId];
+          if (!approvalId || !resolved.approvalDigest) {
+            throw new Error(`Approval missing for branch ${branch.branchId}`);
+          }
+          consumedApproval = this.#persistence.consumeApproval(
+            approvalId,
+            resolved.approvalDigest,
+            this.#clock().toISOString(),
+          );
+          if (consumedApproval.status !== "consumed") {
+            throw new Error(
+              `Approval cannot be consumed: ${consumedApproval.status}`,
+            );
+          }
+        }
+        const providerRequest = resolved.descriptor.providerRequest;
+        const dispatchId = this.#idFactory();
+        const providerAttempt = providerRequest
+          ? this.#persistence.saveProviderExecutionAttempt({
+              id: dispatchId,
+              runId: run.id,
+              planId: run.planId,
+              stepId: resolved.step.id,
+              capabilityId: resolved.step.capabilityId,
+              adapterId: providerRequest.adapterId,
+              adapterVersion: providerRequest.adapterVersion,
+              adapterBuildDigest: providerRequest.adapterBuildDigest,
+              providerId: providerRequest.providerId,
+              transport: providerRequest.transport,
+              requestDigest: providerRequest.requestDigest,
+              contextDigest: providerRequest.contextDigest,
+              effectClass: classifyOperationEffect(resolved.step.action),
+              recoveryCapabilities: providerRequest.recoveryCapabilities,
+              remoteState: "not_dispatched",
+              budget: providerRequest.budget,
+              createdAt: this.#clock().toISOString(),
+              updatedAt: this.#clock().toISOString(),
+            })
+          : undefined;
+        const activeBranch = activeRun.branches.get(key)!;
+        if (providerAttempt)
+          activeBranch.providerAttemptId = providerAttempt.id;
+        if (durable) {
+          try {
+            this.#persistence.startBranchExecution(
+              run.id,
+              group.groupId,
+              branch.branchId,
+              dispatchId,
+              providerAttempt !== undefined,
+              this.#clock().toISOString(),
+              consumedApproval?.id,
+            );
+          } catch (error) {
+            if (!rootController.signal.aborted) throw error;
+            localStates.set(branch.branchId, {
+              runId: run.id,
+              groupId: group.groupId,
+              branchId: branch.branchId,
+              stepId: branch.stepId,
+              lifecycle: "cancelled",
+              revision: 2,
+              providerCallsUsed: 0,
+              outputBytesObserved: 0,
+              terminalReason: "group_cancelled_before_dispatch",
+              updatedAt: this.#clock().toISOString(),
+            });
+            return;
+          }
+        }
+        localStates.set(
+          branch.branchId,
+          branchExecutionStateSchema.parse({
+            runId: run.id,
+            groupId: group.groupId,
+            branchId: branch.branchId,
+            stepId: branch.stepId,
+            lifecycle: "running",
+            revision: 2,
+            providerCallsUsed: providerAttempt ? 1 : 0,
+            outputBytesObserved: 0,
+            dispatchId,
+            updatedAt: this.#clock().toISOString(),
+          }),
+        );
+        if (providerAttempt) {
+          this.#persistence.updateProviderExecutionState(
+            providerAttempt.id,
+            "dispatching",
+            this.#clock().toISOString(),
+          );
+        }
+        const slice = slices.get(branch.branchId)!;
+        const context: DispatchContext = {
+          runId: run.id,
+          planId: run.planId,
+          planDigest: run.planDigest,
+          registrySnapshotId: run.registrySnapshotId,
+          request: immutableSnapshot(preview.request),
+          projectContext: immutableSnapshot({
+            id: preview.projectContext.id,
+            revision: preview.projectContext.revision,
+            digest: preview.projectContext.digest,
+            objectiveRequestId: preview.projectContext.objective.requestId,
+            workspaceId: preview.projectContext.workspace.id,
+          }),
+          contextSlice: immutableSnapshot({
+            id: slice.id,
+            revision: slice.revision,
+            digest: slice.digest,
+            branchId: slice.branchId,
+            groupId: slice.groupId,
+          }),
+          step: immutableSnapshot(resolved.step),
+          descriptor: immutableSnapshot(resolved.descriptor),
+          policy: immutableSnapshot(resolved.policy),
+          ...(consumedApproval
+            ? { approval: immutableSnapshot(consumedApproval) }
+            : {}),
+          ...(resolved.approvalDigest
+            ? { expectedApprovalDigest: resolved.approvalDigest }
+            : {}),
+          outputs: immutableSnapshot({}),
+          signal: controller.signal,
+          emit: (event) => {
+            const parsed = runtimeStreamEventSchema.parse({
+              runId: run.id,
+              planId: run.planId,
+              stepId: resolved.step.id,
+              capabilityId: resolved.step.capabilityId,
+              event,
+            });
+            try {
+              options.onEvent?.(parsed);
+            } catch {
+              // Observers never control branch execution.
+            }
+          },
+        };
+        let result: DispatchResult;
+        let timedOut = false;
+        const timeout = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, branch.budget.timeoutMs);
+        try {
+          result = await resolved.dispatcher.dispatch(context);
+          this.#validateDispatchResult(result);
+        } catch {
+          if (providerAttempt)
+            this.#markProviderStateUnknown(providerAttempt.id);
+          if (durable) {
+            this.#persistence.markBranchUnknown(
+              run.id,
+              group.groupId,
+              branch.branchId,
+              this.#clock().toISOString(),
+              "dispatch_terminal_unavailable",
+            );
+          }
+          localStates.set(branch.branchId, {
+            ...localStates.get(branch.branchId)!,
+            lifecycle: "unknown",
+            revision: 3,
+            terminalReason: "dispatch_terminal_unavailable",
+            updatedAt: this.#clock().toISOString(),
+          });
+          return;
+        } finally {
+          clearTimeout(timeout);
+        }
+        if (timedOut) {
+          if (result.outcome !== "cancelled") {
+            if (providerAttempt)
+              this.#markProviderStateUnknown(providerAttempt.id);
+            if (durable) {
+              this.#persistence.markBranchUnknown(
+                run.id,
+                group.groupId,
+                branch.branchId,
+                this.#clock().toISOString(),
+                "timeout_termination_unconfirmed",
+              );
+            }
+            localStates.set(branch.branchId, {
+              ...localStates.get(branch.branchId)!,
+              lifecycle: "unknown",
+              revision: 3,
+              terminalReason: "timeout_termination_unconfirmed",
+              updatedAt: this.#clock().toISOString(),
+            });
+            return;
+          }
+          result = {
+            ...result,
+            outcome: "timed_out",
+            summary: "Branch timed out and cancellation was confirmed",
+          };
+        }
+        if (providerAttempt) {
+          const remoteState = result.remoteState ?? "remote_state_unknown";
+          this.#persistence.updateProviderExecutionState(
+            providerAttempt.id,
+            remoteState,
+            this.#clock().toISOString(),
+          );
+          if (
+            result.outcome === "remote_state_unknown" ||
+            remoteState === "remote_state_unknown"
+          ) {
+            if (durable) {
+              this.#persistence.markBranchUnknown(
+                run.id,
+                group.groupId,
+                branch.branchId,
+                this.#clock().toISOString(),
+                "remote_state_unknown",
+              );
+            }
+            localStates.set(branch.branchId, {
+              ...localStates.get(branch.branchId)!,
+              lifecycle: "unknown",
+              revision: 3,
+              terminalReason: "remote_state_unknown",
+              updatedAt: this.#clock().toISOString(),
+            });
+            return;
+          }
+        }
+        if (result.treeTerminationConfirmed === false) {
+          if (durable) {
+            this.#persistence.markBranchUnknown(
+              run.id,
+              group.groupId,
+              branch.branchId,
+              this.#clock().toISOString(),
+              "process_tree_termination_unconfirmed",
+            );
+          }
+          localStates.set(branch.branchId, {
+            ...localStates.get(branch.branchId)!,
+            lifecycle: "unknown",
+            revision: 3,
+            terminalReason: "process_tree_termination_unconfirmed",
+            updatedAt: this.#clock().toISOString(),
+          });
+          return;
+        }
+        const outputBytes =
+          result.output === undefined
+            ? 0
+            : Buffer.byteLength(canonicalizeJson(result.output), "utf8");
+        const evidence = stepEvidenceSchema.parse({
+          id: this.#idFactory(),
+          runId: run.id,
+          planId: run.planId,
+          stepId: resolved.step.id,
+          capabilityId: resolved.step.capabilityId,
+          subsystem: resolved.step.subsystem,
+          capabilityVersion: resolved.descriptor.capabilityVersion,
+          outcome: result.outcome,
+          observedAt: this.#clock().toISOString(),
+          summary:
+            preview.request.privacyMode === "standard"
+              ? result.summary
+              : `Private ${resolved.step.subsystem} branch ${result.outcome}`,
+          ...(result.outputDigest ? { outputDigest: result.outputDigest } : {}),
+        });
+        if (durable) {
+          this.#persistence.finishBranchExecution(
+            run.id,
+            group.groupId,
+            branch.branchId,
+            evidence,
+            outputBytes,
+          );
+        } else {
+          this.#persistence.appendEvidence(evidence);
+        }
+        const lifecycle =
+          result.outcome === "timed_out"
+            ? "failed"
+            : result.outcome === "remote_state_unknown"
+              ? "unknown"
+              : result.outcome;
+        localStates.set(branch.branchId, {
+          ...localStates.get(branch.branchId)!,
+          lifecycle,
+          revision: 3,
+          outputBytesObserved: outputBytes,
+          evidenceId: evidence.id,
+          terminalReason: evidence.summary,
+          updatedAt: evidence.observedAt,
+        });
+        evidenceByBranch.set(branch.branchId, {
+          evidenceId: evidence.id,
+          ...(evidence.outputDigest
+            ? { outputDigest: evidence.outputDigest }
+            : {}),
+        });
+        if (result.output !== undefined) {
+          outputs[branch.stepId] = immutableSnapshot(result.output);
+        }
+      } finally {
+        rootController.signal.removeEventListener("abort", abort);
+        activeRun.branches.delete(key);
+      }
+    };
+
+    const worker = async () => {
+      while (!rootController.signal.aborted) {
+        const index = cursor++;
+        const branch = orderedBranches[index];
+        if (!branch) return;
+        await executeOne(branch);
+      }
+    };
+
+    try {
+      await Promise.all(
+        Array.from(
+          { length: Math.min(group.maxConcurrency, orderedBranches.length) },
+          () => worker(),
+        ),
+      );
+      for (const branch of orderedBranches.slice(cursor)) {
+        localStates.set(branch.branchId, {
+          runId: run.id,
+          groupId: group.groupId,
+          branchId: branch.branchId,
+          stepId: branch.stepId,
+          lifecycle: "cancelled",
+          revision: 2,
+          providerCallsUsed: 0,
+          outputBytesObserved: 0,
+          terminalReason: "group_cancelled_before_dispatch",
+          updatedAt: this.#clock().toISOString(),
+        });
+      }
+      const fanIn = this.#buildFanInResult(
+        run.id,
+        group,
+        orderedBranches.map(
+          (branch) =>
+            localStates.get(branch.branchId) ?? {
+              runId: run.id,
+              groupId: group.groupId,
+              branchId: branch.branchId,
+              stepId: branch.stepId,
+              lifecycle: "blocked" as const,
+              revision: 1,
+              providerCallsUsed: 0,
+              outputBytesObserved: 0,
+              terminalReason: "branch_not_dispatched",
+              updatedAt: this.#clock().toISOString(),
+            },
+        ),
+        evidenceByBranch,
+      );
+      if (durable) {
+        this.#persistence.recordFanInResult(fanIn, this.#clock().toISOString());
+      }
+      let evidenceCount = evidenceByBranch.size;
+      if (fanIn.status === "confirmed") {
+        const continuation = await this.#executeFanInContinuations(
+          preview,
+          run,
+          group,
+          options,
+          rootController,
+          outputs,
+        );
+        evidenceCount += continuation.evidenceCount;
+        if (continuation.status) {
+          const result = this.#finishRun(
+            run.id,
+            continuation.status,
+            continuation.reason,
+            evidenceCount,
+            outputs,
+          );
+          return { ...result, fanIn };
+        }
+        const result = this.#finishRun(
+          run.id,
+          "completed",
+          "Bounded fan-in confirmed",
+          evidenceCount,
+          outputs,
+        );
+        return { ...result, fanIn };
+      }
+      if (fanIn.status === "blocked") {
+        if (this.#persistence.findRun(run.id)?.status === "running") {
+          this.#persistence.updateRunStatus(
+            run.id,
+            "orphaned",
+            this.#clock().toISOString(),
+          );
+        }
+        return {
+          status: "remote_state_unknown",
+          reason: fanIn.reason,
+          runId: run.id,
+          evidenceCount,
+          outputs,
+          fanIn,
+        };
+      }
+      const terminal = fanIn.status === "cancelled" ? "cancelled" : "failed";
+      const result = this.#finishRun(
+        run.id,
+        terminal,
+        fanIn.reason,
+        evidenceCount,
+        outputs,
+      );
+      return { ...result, fanIn };
+    } finally {
+      this.#activeRuns.delete(run.id);
+    }
+  }
+
   cancel(runId: string): boolean {
     const active = this.#activeRuns.get(runId);
     if (!active) return false;
@@ -975,8 +1717,99 @@ export class RuntimeEngine {
         );
       }
     }
+    for (const branch of active.branches.values()) {
+      if (this.#persistence.findBranchGroup(runId, branch.groupId)) {
+        this.#persistence.requestBranchGroupCancellation(
+          runId,
+          branch.groupId,
+          this.#clock().toISOString(),
+        );
+      }
+      if (branch.providerAttemptId) {
+        const attempt = this.#persistence.findProviderExecutionAttempt(
+          branch.providerAttemptId,
+        );
+        if (
+          attempt &&
+          ["dispatching", "accepted", "running"].includes(attempt.remoteState)
+        ) {
+          this.#persistence.updateProviderExecutionState(
+            attempt.id,
+            "cancel_requested",
+            this.#clock().toISOString(),
+          );
+        }
+      }
+      branch.controller.abort();
+    }
     active.controller.abort();
     return true;
+  }
+
+  cancelBranch(runId: string, groupId: string, branchId: string): boolean {
+    const active = this.#activeRuns.get(runId);
+    const branch = active?.branches.get(`${groupId}\u0000${branchId}`);
+    if (!active || !branch) return false;
+    if (this.#persistence.findBranchGroup(runId, groupId)) {
+      this.#persistence.requestBranchCancellation(
+        runId,
+        groupId,
+        branchId,
+        this.#clock().toISOString(),
+      );
+    }
+    if (branch.providerAttemptId) {
+      const attempt = this.#persistence.findProviderExecutionAttempt(
+        branch.providerAttemptId,
+      );
+      if (
+        attempt &&
+        ["dispatching", "accepted", "running"].includes(attempt.remoteState)
+      ) {
+        this.#persistence.updateProviderExecutionState(
+          attempt.id,
+          "cancel_requested",
+          this.#clock().toISOString(),
+        );
+      }
+    }
+    branch.controller.abort();
+    return true;
+  }
+
+  cancelBranchGroup(runId: string, groupId: string): boolean {
+    const active = this.#activeRuns.get(runId);
+    if (!active) return false;
+    const branches = [...active.branches.values()].filter(
+      (branch) => branch.groupId === groupId,
+    );
+    if (this.#persistence.findBranchGroup(runId, groupId)) {
+      this.#persistence.requestBranchGroupCancellation(
+        runId,
+        groupId,
+        this.#clock().toISOString(),
+      );
+    }
+    for (const branch of branches) {
+      if (branch.providerAttemptId) {
+        const attempt = this.#persistence.findProviderExecutionAttempt(
+          branch.providerAttemptId,
+        );
+        if (
+          attempt &&
+          ["dispatching", "accepted", "running"].includes(attempt.remoteState)
+        ) {
+          this.#persistence.updateProviderExecutionState(
+            attempt.id,
+            "cancel_requested",
+            this.#clock().toISOString(),
+          );
+        }
+      }
+      branch.controller.abort();
+    }
+    active.controller.abort();
+    return branches.length > 0;
   }
 
   resolveUnknownProviderExecution(
@@ -1017,6 +1850,245 @@ export class RuntimeEngine {
     return this.#persistence.recoverRunningRuns(this.#clock().toISOString());
   }
 
+  async #executeFanInContinuations(
+    preview: OrchestrationPreview,
+    run: ExecutionRun,
+    group: BranchGroup,
+    options: RuntimeBranchExecutionOptions,
+    controller: AbortController,
+    outputs: Record<string, unknown>,
+  ): Promise<{
+    evidenceCount: number;
+    status?: "failed" | "cancelled" | "timed_out" | "orphaned";
+    reason: string;
+  }> {
+    const branchStepIds = new Set(
+      group.branches.map((branch) => branch.stepId),
+    );
+    const completed = new Set(branchStepIds);
+    let evidenceCount = 0;
+    for (const step of preview.plan.steps) {
+      if (branchStepIds.has(step.id)) continue;
+      if (!step.dependsOn.every((dependency) => completed.has(dependency))) {
+        return {
+          evidenceCount,
+          status: "failed",
+          reason: `Fan-in continuation dependencies are incomplete for ${step.id}`,
+        };
+      }
+      const resolved = this.#resolveStep(this.#validatePreview(preview), step);
+      if (resolved.policy.decision === "deny") {
+        return {
+          evidenceCount,
+          status: "failed",
+          reason: `Policy denied fan-in continuation ${step.id}`,
+        };
+      }
+      let consumedApproval: ApprovalRecord | undefined;
+      if (resolved.policy.decision === "require_approval") {
+        const approvalId = options.approvalIds?.[step.id];
+        if (!approvalId || !resolved.approvalDigest) {
+          return {
+            evidenceCount,
+            status: "failed",
+            reason: `Approval missing for fan-in continuation ${step.id}`,
+          };
+        }
+        consumedApproval = this.#persistence.consumeApproval(
+          approvalId,
+          resolved.approvalDigest,
+          this.#clock().toISOString(),
+        );
+        if (consumedApproval.status !== "consumed") {
+          return {
+            evidenceCount,
+            status: "failed",
+            reason: `Approval is not consumable for ${step.id}`,
+          };
+        }
+      }
+      const durable = preview.request.privacyMode === "standard";
+      const providerRequest = resolved.descriptor.providerRequest;
+      const attempt = providerRequest
+        ? this.#persistence.saveProviderExecutionAttempt({
+            id: this.#idFactory(),
+            runId: run.id,
+            planId: run.planId,
+            stepId: step.id,
+            capabilityId: step.capabilityId,
+            adapterId: providerRequest.adapterId,
+            adapterVersion: providerRequest.adapterVersion,
+            adapterBuildDigest: providerRequest.adapterBuildDigest,
+            providerId: providerRequest.providerId,
+            transport: providerRequest.transport,
+            requestDigest: providerRequest.requestDigest,
+            contextDigest: providerRequest.contextDigest,
+            effectClass: classifyOperationEffect(step.action),
+            recoveryCapabilities: providerRequest.recoveryCapabilities,
+            remoteState: "not_dispatched",
+            budget: providerRequest.budget,
+            createdAt: this.#clock().toISOString(),
+            updatedAt: this.#clock().toISOString(),
+          })
+        : undefined;
+      if (durable) {
+        this.#persistence.startDurableWorkflowStep(
+          run.id,
+          step.id,
+          this.#clock().toISOString(),
+          attempt !== undefined,
+          consumedApproval?.id,
+          attempt?.id,
+        );
+      }
+      if (attempt) {
+        this.#persistence.updateProviderExecutionState(
+          attempt.id,
+          "dispatching",
+          this.#clock().toISOString(),
+        );
+      }
+      const context: DispatchContext = {
+        runId: run.id,
+        planId: run.planId,
+        planDigest: run.planDigest,
+        registrySnapshotId: run.registrySnapshotId,
+        request: immutableSnapshot(preview.request),
+        projectContext: immutableSnapshot({
+          id: preview.projectContext.id,
+          revision: preview.projectContext.revision,
+          digest: preview.projectContext.digest,
+          objectiveRequestId: preview.projectContext.objective.requestId,
+          workspaceId: preview.projectContext.workspace.id,
+        }),
+        step: immutableSnapshot(step),
+        descriptor: immutableSnapshot(resolved.descriptor),
+        policy: immutableSnapshot(resolved.policy),
+        ...(consumedApproval
+          ? { approval: immutableSnapshot(consumedApproval) }
+          : {}),
+        ...(resolved.approvalDigest
+          ? { expectedApprovalDigest: resolved.approvalDigest }
+          : {}),
+        outputs: immutableSnapshot(
+          Object.fromEntries(
+            step.dependsOn.flatMap((dependency) =>
+              Object.hasOwn(outputs, dependency)
+                ? [[dependency, outputs[dependency]]]
+                : [],
+            ),
+          ),
+        ),
+        signal: controller.signal,
+        emit: (event) => {
+          try {
+            options.onEvent?.(
+              runtimeStreamEventSchema.parse({
+                runId: run.id,
+                planId: run.planId,
+                stepId: step.id,
+                capabilityId: step.capabilityId,
+                event,
+              }),
+            );
+          } catch {
+            // Observers never control continuation execution.
+          }
+        },
+      };
+      let result: DispatchResult;
+      try {
+        result = await resolved.dispatcher.dispatch(context);
+        this.#validateDispatchResult(result);
+      } catch {
+        if (attempt) this.#markProviderStateUnknown(attempt.id);
+        if (durable) {
+          this.#persistence.markDurableWorkflowStepUnknown(
+            run.id,
+            step.id,
+            this.#clock().toISOString(),
+            "fan_in_continuation_terminal_unavailable",
+          );
+        }
+        return {
+          evidenceCount,
+          status: "orphaned",
+          reason: "Fan-in continuation terminal state is unknown",
+        };
+      }
+      if (attempt) {
+        const remoteState = result.remoteState ?? "remote_state_unknown";
+        this.#persistence.updateProviderExecutionState(
+          attempt.id,
+          remoteState,
+          this.#clock().toISOString(),
+        );
+        if (
+          result.outcome === "remote_state_unknown" ||
+          remoteState === "remote_state_unknown"
+        ) {
+          if (durable) {
+            this.#persistence.markDurableWorkflowStepUnknown(
+              run.id,
+              step.id,
+              this.#clock().toISOString(),
+              "remote_state_unknown",
+            );
+          }
+          return {
+            evidenceCount,
+            status: "orphaned",
+            reason: "Fan-in continuation remote state is unknown",
+          };
+        }
+      }
+      if (result.treeTerminationConfirmed === false) {
+        if (durable) {
+          this.#persistence.markDurableWorkflowStepUnknown(
+            run.id,
+            step.id,
+            this.#clock().toISOString(),
+            "process_tree_termination_unconfirmed",
+          );
+        }
+        return {
+          evidenceCount,
+          status: "orphaned",
+          reason: "Fan-in continuation process termination is unconfirmed",
+        };
+      }
+      const outputBytes =
+        result.output === undefined
+          ? 0
+          : Buffer.byteLength(canonicalizeJson(result.output), "utf8");
+      this.#appendEvidence(
+        run,
+        resolved,
+        result,
+        preview.request.privacyMode !== "standard",
+        durable,
+        outputBytes,
+      );
+      evidenceCount += 1;
+      if (result.output !== undefined)
+        outputs[step.id] = immutableSnapshot(result.output);
+      if (result.outcome !== "succeeded") {
+        return {
+          evidenceCount,
+          status:
+            result.outcome === "timed_out"
+              ? "timed_out"
+              : result.outcome === "cancelled"
+                ? "cancelled"
+                : "failed",
+          reason: result.summary,
+        };
+      }
+      completed.add(step.id);
+    }
+    return { evidenceCount, reason: "Fan-in continuations completed" };
+  }
+
   #validatePreview(input: OrchestrationPreview): OrchestrationPreview {
     this.#persistence.assertPrivilegedActionsAvailable();
     const preview = orchestrationPreviewSchema.parse(input);
@@ -1037,6 +2109,164 @@ export class RuntimeEngine {
       throw new Error("Persisted plan binding does not match the preview");
     }
     return preview;
+  }
+
+  #validateBranchGroup(
+    preview: OrchestrationPreview,
+    group: BranchGroup,
+    slices: readonly ContextSliceManifest[],
+  ): void {
+    const unsigned = { ...group };
+    Reflect.deleteProperty(unsigned, "digest");
+    if (group.digest !== this.#sha256(canonicalizeJson(unsigned))) {
+      throw new Error("Branch group digest mismatch");
+    }
+    if (
+      group.planId !== preview.plan.id ||
+      group.planDigest !== preview.planIntegrity.digest ||
+      group.workspaceId !== preview.projectContext.workspace.id ||
+      group.objectiveRequestId !== preview.projectContext.objective.requestId ||
+      group.maxDepth !== 1
+    ) {
+      throw new Error("Branch group does not match the confirmed plan context");
+    }
+    if (
+      group.branches.length > preview.projectContext.budget.limits.maxAgents ||
+      group.budget.maxProviderCalls >
+        preview.projectContext.budget.limits.maxProviderCalls ||
+      group.budget.maxOutputBytes >
+        preview.projectContext.budget.limits.maxOutputBytes ||
+      group.budget.timeoutMs > preview.projectContext.budget.limits.timeoutMs ||
+      group.branches.reduce(
+        (total, branch) => total + branch.budget.maxProviderCalls,
+        0,
+      ) > group.budget.maxProviderCalls ||
+      group.branches.reduce(
+        (total, branch) => total + branch.budget.maxOutputBytes,
+        0,
+      ) > group.budget.maxOutputBytes
+    ) {
+      throw new Error("Branch group exceeds its hierarchical budget");
+    }
+    if (slices.length !== group.branches.length) {
+      throw new Error("Each branch requires one exclusive context slice");
+    }
+    const sliceIds = new Set(slices.map((slice) => slice.id));
+    if (sliceIds.size !== slices.length) {
+      throw new Error(
+        "Context slices cannot be shared implicitly between branches",
+      );
+    }
+    for (const branch of group.branches) {
+      const step = preview.plan.steps.find(
+        (candidate) => candidate.id === branch.stepId,
+      );
+      if (!step) throw new Error(`Unknown branch step: ${branch.stepId}`);
+      const resolved = this.#resolveStep(preview, step);
+      const effect = classifyOperationEffect(step.action);
+      const intrinsicallyReadOnly = step.action.kinds.every(
+        (kind) => kind === "read",
+      );
+      if (
+        !["pure", "read_only"].includes(effect) ||
+        !intrinsicallyReadOnly ||
+        step.action.risk === "destructive"
+      ) {
+        throw new Error(`Unsafe parallel effect for branch ${branch.branchId}`);
+      }
+      if (
+        branch.projectContext.id !== preview.projectContext.id ||
+        branch.projectContext.revision !== preview.projectContext.revision ||
+        branch.projectContext.digest !== preview.projectContext.digest ||
+        branch.executionTarget.subsystem !== step.subsystem ||
+        branch.executionTarget.capabilityId !== step.capabilityId ||
+        !branch.requiredCapabilities.includes(step.capabilityId) ||
+        !sameCanonicalValue(branch.agentProfiles, step.agentProfiles ?? []) ||
+        !sameCanonicalValue(branch.dependencies, step.dependsOn) ||
+        branch.provenance.planDigest !== preview.planIntegrity.digest ||
+        branch.provenance.descriptorDigest !==
+          this.#sha256(canonicalizeJson(resolved.descriptor)) ||
+        branch.policyBinding.rulesetVersion !== step.policy.rulesetVersion ||
+        branch.policyBinding.decision !== step.policy.decision ||
+        branch.policyBinding.actionDigest !==
+          (resolved.approvalDigest ??
+            this.#sha256(canonicalizeJson(step.action))) ||
+        branch.budget.maxProviderCalls > group.budget.maxProviderCalls ||
+        branch.budget.maxOutputBytes > group.budget.maxOutputBytes ||
+        branch.budget.timeoutMs > group.budget.timeoutMs
+      ) {
+        throw new Error(`Branch binding mismatch: ${branch.branchId}`);
+      }
+      const slice = slices.find(
+        (candidate) =>
+          candidate.id === branch.contextSlice.id &&
+          candidate.revision === branch.contextSlice.revision,
+      );
+      if (!slice || slice.digest !== branch.contextSlice.digest) {
+        throw new Error(`Branch context slice mismatch: ${branch.branchId}`);
+      }
+    }
+  }
+
+  #buildFanInResult(
+    runId: string,
+    group: BranchGroup,
+    states: readonly BranchExecutionState[],
+    evidence: ReadonlyMap<
+      string,
+      { readonly evidenceId: string; readonly outputDigest?: string }
+    >,
+  ): FanInResult {
+    const ordered = [...states].sort((left, right) =>
+      left.branchId.localeCompare(right.branchId),
+    );
+    const succeeded = ordered.filter(
+      (state) => state.lifecycle === "succeeded",
+    ).length;
+    let status: FanInResult["status"];
+    let reason: string;
+    if (ordered.some((state) => state.lifecycle === "unknown")) {
+      status = "blocked";
+      reason = "Fan-in blocked by an unknown branch state";
+    } else if (succeeded === ordered.length) {
+      status = "confirmed";
+      reason = "All required branches completed with verified evidence";
+    } else if (
+      group.fanInPolicy.mode === "allow_partial" &&
+      succeeded >= group.fanInPolicy.minimumSucceeded
+    ) {
+      status = "degraded";
+      reason = `${succeeded}/${ordered.length} branches completed; degradation is explicit`;
+    } else if (ordered.every((state) => state.lifecycle === "cancelled")) {
+      status = "cancelled";
+      reason = "All branches were cancelled";
+    } else {
+      status = "failed";
+      reason = `${succeeded}/${ordered.length} required branches succeeded`;
+    }
+    const unsigned = {
+      schemaVersion: "1" as const,
+      runId,
+      groupId: group.groupId,
+      status,
+      expectedBranches: ordered.length,
+      succeededBranches: succeeded,
+      branchResults: ordered.map((state) => ({
+        branchId: state.branchId,
+        lifecycle: state.lifecycle,
+        ...(evidence.get(state.branchId)?.evidenceId
+          ? { evidenceId: evidence.get(state.branchId)!.evidenceId }
+          : {}),
+        ...(evidence.get(state.branchId)?.outputDigest
+          ? { outputDigest: evidence.get(state.branchId)!.outputDigest }
+          : {}),
+      })),
+      reason,
+    };
+    return fanInResultSchema.parse({
+      ...unsigned,
+      digest: this.#sha256(canonicalizeJson(unsigned)),
+    });
   }
 
   #resolveSteps(preview: OrchestrationPreview): ResolvedStep[] {

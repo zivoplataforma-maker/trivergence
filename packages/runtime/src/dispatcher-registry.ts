@@ -35,6 +35,14 @@ export interface DispatchContext {
     readonly objectiveRequestId: string;
     readonly workspaceId: string;
   };
+  /** Referencia gobernada; el slice completo sigue siendo data, no autoridad. */
+  readonly contextSlice?: {
+    readonly id: string;
+    readonly revision: number;
+    readonly digest: string;
+    readonly branchId: string;
+    readonly groupId: string;
+  };
   readonly step: PlannedStep;
   readonly descriptor: ExecutionDescriptor;
   readonly policy: PolicyDecision;

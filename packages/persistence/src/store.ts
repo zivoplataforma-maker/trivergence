@@ -5,9 +5,13 @@ import { backup, DatabaseSync } from "node:sqlite";
 
 import {
   approvalRecordSchema,
+  branchExecutionStateSchema,
+  branchGroupSchema,
+  contextSliceManifestSchema,
   durableWorkflowExecutionSchema,
   durableWorkflowStepSchema,
   executionRunSchema,
+  fanInResultSchema,
   orchestrationPreviewSchema,
   planExecutionBindingSchema,
   projectContextSnapshotSchema,
@@ -18,9 +22,13 @@ import {
   type AuditEvent,
   type AuditEventType,
   type AuditPayload,
+  type BranchExecutionState,
+  type BranchGroup,
+  type ContextSliceManifest,
   type DurableWorkflowExecution,
   type DurableWorkflowStep,
   type ExecutionRun,
+  type FanInResult,
   type OrchestrationPreview,
   type PlanExecutionBinding,
   type ProjectContextSnapshot,
@@ -75,6 +83,32 @@ export interface PersistedExecutionHistoryEntry {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly evidenceCount: number;
+}
+
+export interface PersistedBranchGroup {
+  readonly runId: string;
+  readonly groupId: string;
+  readonly groupDigest: string;
+  readonly lifecycle:
+    | "pending"
+    | "running"
+    | "confirmed"
+    | "degraded"
+    | "blocked"
+    | "failed"
+    | "cancelled"
+    | "budget_exhausted";
+  readonly maxConcurrency: number;
+  readonly maxProviderCalls: number;
+  readonly maxOutputBytes: number;
+  readonly providerCallsUsed: number;
+  readonly outputBytesObserved: number;
+  readonly cancelRequested: boolean;
+  readonly fanIn?: FanInResult;
+  readonly revision: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly expiresAt: string;
 }
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
@@ -1203,6 +1237,599 @@ export class PersistenceStore {
     });
   }
 
+  createBranchGroup(
+    runId: string,
+    groupInput: BranchGroup,
+    slicesInput: readonly ContextSliceManifest[],
+    createdAt: string,
+    expiresAt: string,
+  ): PersistedBranchGroup {
+    this.#assertWritable();
+    const group = branchGroupSchema.parse(groupInput);
+    const slices = slicesInput.map((slice) =>
+      contextSliceManifestSchema.parse(slice),
+    );
+    if (slices.length !== group.branches.length) {
+      throw new Error("Each branch requires exactly one context slice");
+    }
+    return this.#transaction(() => {
+      const workflow = this.findDurableWorkflow(runId);
+      if (
+        !workflow ||
+        workflow.workflowId !== group.planId ||
+        workflow.planDigest !== group.planDigest ||
+        workflow.workspaceId !== group.workspaceId
+      ) {
+        throw new Error("Branch group does not match its durable workflow");
+      }
+      const insertSlice = this.#database.prepare(
+        `INSERT INTO context_slice_manifests(
+          slice_id, revision, context_id, context_revision, workspace_id,
+          objective_request_id, group_id, branch_id, manifest_json, digest,
+          created_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const slice of slices) {
+        if (
+          slice.groupId !== group.groupId ||
+          slice.workspaceId !== group.workspaceId ||
+          slice.objectiveRequestId !== group.objectiveRequestId ||
+          !group.branches.some(
+            (branch) =>
+              branch.branchId === slice.branchId &&
+              branch.contextSlice.id === slice.id &&
+              branch.contextSlice.revision === slice.revision &&
+              branch.contextSlice.digest === slice.digest,
+          )
+        ) {
+          throw new Error("Context slice does not match its branch binding");
+        }
+        insertSlice.run(
+          slice.id,
+          slice.revision,
+          slice.projectContext.id,
+          slice.projectContext.revision,
+          slice.workspaceId,
+          slice.objectiveRequestId,
+          slice.groupId,
+          slice.branchId,
+          JSON.stringify(slice),
+          slice.digest,
+          slice.createdAt,
+          slice.expiresAt,
+        );
+      }
+      this.#database
+        .prepare(
+          `INSERT INTO branch_groups(
+            run_id, group_id, group_digest, lifecycle, max_concurrency,
+            max_provider_calls, max_output_bytes, provider_calls_used,
+            output_bytes_observed, cancel_requested, revision, created_at,
+            updated_at, expires_at
+          ) VALUES (?, ?, ?, 'pending', ?, ?, ?, 0, 0, 0, 1, ?, ?, ?)`,
+        )
+        .run(
+          runId,
+          group.groupId,
+          group.digest,
+          group.maxConcurrency,
+          group.budget.maxProviderCalls,
+          group.budget.maxOutputBytes,
+          createdAt,
+          createdAt,
+          expiresAt,
+        );
+      const insertBranch = this.#database.prepare(
+        `INSERT INTO branch_executions(
+          run_id, group_id, branch_id, step_id, descriptor_json,
+          context_slice_id, context_slice_revision, context_slice_digest,
+          lifecycle, max_provider_calls, max_output_bytes,
+          provider_calls_used, output_bytes_observed, revision, created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?, 0, 0, 1, ?, ?)`,
+      );
+      for (const branch of group.branches) {
+        insertBranch.run(
+          runId,
+          group.groupId,
+          branch.branchId,
+          branch.stepId,
+          JSON.stringify(branch),
+          branch.contextSlice.id,
+          branch.contextSlice.revision,
+          branch.contextSlice.digest,
+          branch.budget.maxProviderCalls,
+          branch.budget.maxOutputBytes,
+          createdAt,
+          createdAt,
+        );
+      }
+      this.#audit.append({
+        eventType: "workflow.state_changed",
+        subjectId: runId,
+        payload: {
+          branchCount: group.branches.length,
+          groupId: group.groupId,
+          to: "branch_group_pending",
+        },
+      });
+      return this.findBranchGroup(runId, group.groupId)!;
+    });
+  }
+
+  findContextSlice(
+    sliceId: string,
+    revision: number,
+  ): ContextSliceManifest | undefined {
+    this.#assertOpen();
+    const row = this.#database
+      .prepare(
+        `SELECT manifest_json FROM context_slice_manifests
+         WHERE slice_id = ? AND revision = ?`,
+      )
+      .get(sliceId, revision) as { manifest_json: string } | undefined;
+    return row
+      ? contextSliceManifestSchema.parse(JSON.parse(row.manifest_json))
+      : undefined;
+  }
+
+  findBranchGroup(
+    runId: string,
+    groupId: string,
+  ): PersistedBranchGroup | undefined {
+    this.#assertOpen();
+    const row = this.#database
+      .prepare("SELECT * FROM branch_groups WHERE run_id = ? AND group_id = ?")
+      .get(runId, groupId) as Record<string, unknown> | undefined;
+    return row ? this.#branchGroupFromRow(row) : undefined;
+  }
+
+  listBranchExecutions(runId: string, groupId: string): BranchExecutionState[] {
+    this.#assertOpen();
+    return (
+      this.#database
+        .prepare(
+          `SELECT run_id, group_id, branch_id, step_id, lifecycle, revision,
+             provider_calls_used, output_bytes_observed, dispatch_id,
+             evidence_id, terminal_reason, updated_at
+           FROM branch_executions WHERE run_id = ? AND group_id = ?
+           ORDER BY branch_id`,
+        )
+        .all(runId, groupId) as Record<string, unknown>[]
+    ).map((row) =>
+      branchExecutionStateSchema.parse({
+        runId: row.run_id,
+        groupId: row.group_id,
+        branchId: row.branch_id,
+        stepId: row.step_id,
+        lifecycle: row.lifecycle,
+        revision: row.revision,
+        providerCallsUsed: row.provider_calls_used,
+        outputBytesObserved: row.output_bytes_observed,
+        ...(row.dispatch_id ? { dispatchId: row.dispatch_id } : {}),
+        ...(row.evidence_id ? { evidenceId: row.evidence_id } : {}),
+        ...(row.terminal_reason ? { terminalReason: row.terminal_reason } : {}),
+        updatedAt: row.updated_at,
+      }),
+    );
+  }
+
+  startBranchExecution(
+    runId: string,
+    groupId: string,
+    branchId: string,
+    dispatchId: string,
+    providerCall: boolean,
+    updatedAt: string,
+    approvalId?: string,
+  ): BranchExecutionState {
+    this.#assertWritable();
+    return this.#transaction(() => {
+      const group = this.findBranchGroup(runId, groupId);
+      const state = this.listBranchExecutions(runId, groupId).find(
+        (branch) => branch.branchId === branchId,
+      );
+      if (
+        !group ||
+        !state ||
+        state.lifecycle !== "ready" ||
+        group.cancelRequested ||
+        !["pending", "running"].includes(group.lifecycle)
+      ) {
+        throw new Error("Branch is not eligible for dispatch");
+      }
+      const branchRow = this.#database
+        .prepare(
+          `SELECT max_provider_calls, provider_calls_used FROM branch_executions
+           WHERE run_id = ? AND group_id = ? AND branch_id = ?`,
+        )
+        .get(runId, groupId, branchId) as {
+        max_provider_calls: number;
+        provider_calls_used: number;
+      };
+      const charge = providerCall ? 1 : 0;
+      if (
+        branchRow.provider_calls_used + charge > branchRow.max_provider_calls ||
+        group.providerCallsUsed + charge > group.maxProviderCalls
+      ) {
+        throw new Error("Branch provider-call budget is exhausted");
+      }
+      const durableStep = this.#findDurableWorkflowStep(runId, state.stepId);
+      const workflow = this.findDurableWorkflow(runId);
+      if (
+        !durableStep ||
+        durableStep.lifecycle !== "ready" ||
+        durableStep.dispatchStarted ||
+        !workflow ||
+        workflow.lifecycle !== "running"
+      ) {
+        throw new Error("Durable branch step is not ready");
+      }
+      this.#database
+        .prepare(
+          `UPDATE branch_executions SET lifecycle = 'running',
+             provider_calls_used = provider_calls_used + ?, dispatch_id = ?,
+             approval_id = ?, revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND group_id = ? AND branch_id = ?
+             AND lifecycle = 'ready' AND revision = ?`,
+        )
+        .run(
+          charge,
+          dispatchId,
+          approvalId ?? null,
+          updatedAt,
+          runId,
+          groupId,
+          branchId,
+          state.revision,
+        );
+      this.#database
+        .prepare(
+          `UPDATE branch_groups SET lifecycle = 'running',
+             provider_calls_used = provider_calls_used + ?,
+             revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND group_id = ? AND revision = ?`,
+        )
+        .run(charge, updatedAt, runId, groupId, group.revision);
+      this.#database
+        .prepare(
+          `UPDATE durable_workflow_steps SET lifecycle = 'running',
+             dispatch_started = 1, approval_id = ?, revision = revision + 1,
+             updated_at = ?
+           WHERE run_id = ? AND step_id = ? AND lifecycle = 'ready'
+             AND dispatch_started = 0 AND revision = ?`,
+        )
+        .run(
+          approvalId ?? null,
+          updatedAt,
+          runId,
+          state.stepId,
+          durableStep.revision,
+        );
+      this.#database
+        .prepare(
+          `UPDATE durable_workflow_executions
+           SET dispatched_step_ids_json = ?,
+             provider_calls_used = provider_calls_used + ?,
+             revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND revision = ?`,
+        )
+        .run(
+          JSON.stringify([...workflow.budget.dispatchedStepIds, state.stepId]),
+          charge,
+          updatedAt,
+          runId,
+          workflow.revision,
+        );
+      this.#audit.append({
+        eventType: "workflow.step_state_changed",
+        subjectId: runId,
+        payload: { branchId, from: "ready", groupId, to: "running" },
+      });
+      return this.listBranchExecutions(runId, groupId).find(
+        (branch) => branch.branchId === branchId,
+      )!;
+    });
+  }
+
+  finishBranchExecution(
+    runId: string,
+    groupId: string,
+    branchId: string,
+    evidenceInput: StepEvidence,
+    outputBytes: number,
+  ): BranchExecutionState {
+    this.#assertWritable();
+    const evidence = stepEvidenceSchema.parse(evidenceInput);
+    const lifecycle =
+      evidence.outcome === "timed_out" ? "failed" : evidence.outcome;
+    if (!Number.isSafeInteger(outputBytes) || outputBytes < 0) {
+      throw new Error("Invalid branch output accounting");
+    }
+    return this.#transaction(() => {
+      const group = this.findBranchGroup(runId, groupId);
+      const state = this.listBranchExecutions(runId, groupId).find(
+        (branch) => branch.branchId === branchId,
+      );
+      const workflow = this.findDurableWorkflow(runId);
+      const durableStep = this.#findDurableWorkflowStep(runId, evidence.stepId);
+      const branchBudget = this.#database
+        .prepare(
+          `SELECT max_output_bytes, output_bytes_observed FROM branch_executions
+           WHERE run_id = ? AND group_id = ? AND branch_id = ?`,
+        )
+        .get(runId, groupId, branchId) as {
+        max_output_bytes: number;
+        output_bytes_observed: number;
+      };
+      if (
+        !group ||
+        !state ||
+        !["running", "cancel_requested"].includes(state.lifecycle) ||
+        !workflow ||
+        !durableStep ||
+        durableStep.lifecycle !== "running" ||
+        branchBudget.output_bytes_observed + outputBytes >
+          branchBudget.max_output_bytes ||
+        group.outputBytesObserved + outputBytes > group.maxOutputBytes
+      ) {
+        throw new Error("Invalid or over-budget branch terminal transition");
+      }
+      this.#insertEvidence(evidence);
+      this.#database
+        .prepare(
+          `UPDATE branch_executions SET lifecycle = ?, evidence_id = ?,
+             output_bytes_observed = output_bytes_observed + ?, terminal_reason = ?,
+             revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND group_id = ? AND branch_id = ?
+             AND lifecycle IN ('running', 'cancel_requested') AND revision = ?`,
+        )
+        .run(
+          lifecycle,
+          evidence.id,
+          outputBytes,
+          evidence.summary,
+          evidence.observedAt,
+          runId,
+          groupId,
+          branchId,
+          state.revision,
+        );
+      this.#database
+        .prepare(
+          `UPDATE branch_groups SET output_bytes_observed = output_bytes_observed + ?,
+             revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND group_id = ? AND revision = ?`,
+        )
+        .run(outputBytes, evidence.observedAt, runId, groupId, group.revision);
+      this.#database
+        .prepare(
+          `UPDATE durable_workflow_steps SET lifecycle = ?, evidence_id = ?,
+             output_digest = ?, terminal_reason = ?, revision = revision + 1,
+             updated_at = ? WHERE run_id = ? AND step_id = ?
+             AND lifecycle = 'running' AND revision = ?`,
+        )
+        .run(
+          evidence.outcome,
+          evidence.id,
+          evidence.outputDigest ?? null,
+          evidence.summary,
+          evidence.observedAt,
+          runId,
+          evidence.stepId,
+          durableStep.revision,
+        );
+      this.#database
+        .prepare(
+          `UPDATE durable_workflow_executions SET output_bytes_observed = output_bytes_observed + ?,
+             revision = revision + 1, updated_at = ? WHERE run_id = ? AND revision = ?`,
+        )
+        .run(outputBytes, evidence.observedAt, runId, workflow.revision);
+      if (lifecycle === "succeeded") {
+        this.#releaseReadySteps(runId, evidence.observedAt);
+      }
+      this.#audit.append({
+        eventType: "workflow.step_state_changed",
+        subjectId: runId,
+        payload: {
+          branchId,
+          evidenceId: evidence.id,
+          from: "running",
+          groupId,
+          to: lifecycle,
+        },
+      });
+      return this.listBranchExecutions(runId, groupId).find(
+        (branch) => branch.branchId === branchId,
+      )!;
+    });
+  }
+
+  markBranchUnknown(
+    runId: string,
+    groupId: string,
+    branchId: string,
+    updatedAt: string,
+    reason: string,
+  ): void {
+    this.#assertWritable();
+    this.#transaction(() => {
+      const state = this.listBranchExecutions(runId, groupId).find(
+        (branch) => branch.branchId === branchId,
+      );
+      if (
+        !state ||
+        !["running", "cancel_requested"].includes(state.lifecycle)
+      ) {
+        throw new Error("Only an active branch can become unknown");
+      }
+      this.#database
+        .prepare(
+          `UPDATE branch_executions SET lifecycle = 'unknown', terminal_reason = ?,
+             revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND group_id = ? AND branch_id = ? AND revision = ?`,
+        )
+        .run(reason, updatedAt, runId, groupId, branchId, state.revision);
+      this.#database
+        .prepare(
+          `UPDATE durable_workflow_steps SET lifecycle = 'unknown', terminal_reason = ?,
+             revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND step_id = ? AND lifecycle = 'running'`,
+        )
+        .run(reason, updatedAt, runId, state.stepId);
+      this.#database
+        .prepare(
+          `UPDATE branch_groups SET lifecycle = 'blocked', revision = revision + 1,
+             updated_at = ? WHERE run_id = ? AND group_id = ?`,
+        )
+        .run(updatedAt, runId, groupId);
+      this.#database
+        .prepare(
+          `UPDATE durable_workflow_executions SET lifecycle = 'blocked',
+             terminal_reason = ?, revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND lifecycle = 'running'`,
+        )
+        .run(reason, updatedAt, runId);
+    });
+  }
+
+  requestBranchGroupCancellation(
+    runId: string,
+    groupId: string,
+    updatedAt: string,
+  ): BranchExecutionState[] {
+    this.#assertWritable();
+    return this.#transaction(() => {
+      const group = this.findBranchGroup(runId, groupId);
+      if (!group) throw new Error("Branch group not found");
+      if (group.cancelRequested)
+        return this.listBranchExecutions(runId, groupId);
+      this.#database
+        .prepare(
+          `UPDATE branch_groups SET cancel_requested = 1, revision = revision + 1,
+             updated_at = ? WHERE run_id = ? AND group_id = ? AND revision = ?`,
+        )
+        .run(updatedAt, runId, groupId, group.revision);
+      this.#database
+        .prepare(
+          `UPDATE branch_executions SET lifecycle = 'cancelled', terminal_reason = 'group_cancelled_before_dispatch',
+             revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND group_id = ? AND lifecycle IN ('pending', 'ready')`,
+        )
+        .run(updatedAt, runId, groupId);
+      this.#database
+        .prepare(
+          `UPDATE branch_executions SET lifecycle = 'cancel_requested',
+             revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND group_id = ? AND lifecycle = 'running'`,
+        )
+        .run(updatedAt, runId, groupId);
+      this.#database
+        .prepare(
+          `UPDATE durable_workflow_steps SET lifecycle = 'blocked',
+             terminal_reason = 'group_cancelled_before_dispatch', revision = revision + 1,
+             updated_at = ? WHERE run_id = ? AND step_id IN (
+               SELECT step_id FROM branch_executions
+               WHERE run_id = ? AND group_id = ? AND lifecycle = 'cancelled'
+             ) AND lifecycle IN ('pending', 'ready')`,
+        )
+        .run(updatedAt, runId, runId, groupId);
+      return this.listBranchExecutions(runId, groupId);
+    });
+  }
+
+  requestBranchCancellation(
+    runId: string,
+    groupId: string,
+    branchId: string,
+    updatedAt: string,
+  ): BranchExecutionState {
+    this.#assertWritable();
+    return this.#transaction(() => {
+      const state = this.listBranchExecutions(runId, groupId).find(
+        (branch) => branch.branchId === branchId,
+      );
+      if (!state) throw new Error("Branch not found");
+      if (
+        state.lifecycle === "cancel_requested" ||
+        state.lifecycle === "cancelled"
+      ) {
+        return state;
+      }
+      if (state.lifecycle === "running") {
+        this.#database
+          .prepare(
+            `UPDATE branch_executions SET lifecycle = 'cancel_requested',
+               revision = revision + 1, updated_at = ?
+             WHERE run_id = ? AND group_id = ? AND branch_id = ?
+               AND lifecycle = 'running' AND revision = ?`,
+          )
+          .run(updatedAt, runId, groupId, branchId, state.revision);
+      } else if (["pending", "ready"].includes(state.lifecycle)) {
+        this.#database
+          .prepare(
+            `UPDATE branch_executions SET lifecycle = 'cancelled',
+               terminal_reason = 'cancelled_before_dispatch',
+               revision = revision + 1, updated_at = ?
+             WHERE run_id = ? AND group_id = ? AND branch_id = ?
+               AND lifecycle IN ('pending', 'ready') AND revision = ?`,
+          )
+          .run(updatedAt, runId, groupId, branchId, state.revision);
+        this.#database
+          .prepare(
+            `UPDATE durable_workflow_steps SET lifecycle = 'blocked',
+               terminal_reason = 'cancelled_before_dispatch',
+               revision = revision + 1, updated_at = ?
+             WHERE run_id = ? AND step_id = ? AND lifecycle IN ('pending', 'ready')`,
+          )
+          .run(updatedAt, runId, state.stepId);
+      } else {
+        return state;
+      }
+      return this.listBranchExecutions(runId, groupId).find(
+        (branch) => branch.branchId === branchId,
+      )!;
+    });
+  }
+
+  recordFanInResult(
+    resultInput: FanInResult,
+    updatedAt: string,
+  ): PersistedBranchGroup {
+    this.#assertWritable();
+    const result = fanInResultSchema.parse(resultInput);
+    return this.#transaction(() => {
+      const group = this.findBranchGroup(result.runId, result.groupId);
+      if (!group) throw new Error("Branch group not found");
+      const update = this.#database
+        .prepare(
+          `UPDATE branch_groups SET lifecycle = ?, fan_in_json = ?,
+             revision = revision + 1, updated_at = ?
+           WHERE run_id = ? AND group_id = ? AND revision = ?`,
+        )
+        .run(
+          result.status,
+          JSON.stringify(result),
+          updatedAt,
+          result.runId,
+          result.groupId,
+          group.revision,
+        );
+      if (update.changes !== 1)
+        throw new Error("Branch group changed concurrently");
+      this.#audit.append({
+        eventType: "workflow.state_changed",
+        subjectId: result.runId,
+        payload: {
+          groupId: result.groupId,
+          succeededBranches: result.succeededBranches,
+          to: result.status,
+        },
+      });
+      return this.findBranchGroup(result.runId, result.groupId)!;
+    });
+  }
+
   updateRunStatus(
     runId: string,
     nextStatus: ExecutionRun["status"],
@@ -1311,6 +1938,27 @@ export class PersistenceStore {
             },
           });
         }
+        this.#database
+          .prepare(
+            `UPDATE branch_executions SET lifecycle = 'unknown',
+               revision = revision + 1,
+               terminal_reason = 'runtime_restart_state_uncertain', updated_at = ?
+             WHERE run_id = ? AND lifecycle IN ('running', 'cancel_requested')`,
+          )
+          .run(updatedAt, row.id);
+        this.#database
+          .prepare(
+            `UPDATE branch_groups SET lifecycle = 'blocked',
+               revision = revision + 1, updated_at = ?
+             WHERE run_id = ? AND lifecycle IN ('pending', 'running')
+               AND EXISTS (
+                 SELECT 1 FROM branch_executions branch
+                 WHERE branch.run_id = branch_groups.run_id
+                   AND branch.group_id = branch_groups.group_id
+                   AND branch.lifecycle = 'unknown'
+               )`,
+          )
+          .run(updatedAt, row.id);
         this.#database
           .prepare(
             `UPDATE durable_workflow_executions
@@ -2253,6 +2901,12 @@ export class PersistenceStore {
       throw new Error("Invalid Project Context retention boundary");
     }
     return this.#transaction(() => {
+      this.#database
+        .prepare(
+          `DELETE FROM context_slice_manifests
+           WHERE workspace_id = ? AND expires_at <= ?`,
+        )
+        .run(workspaceId, now);
       const result = this.#database
         .prepare(
           `DELETE FROM project_context_snapshots
@@ -2286,6 +2940,21 @@ export class PersistenceStore {
         )
         .all(workspaceId, now) as { run_id: string }[];
       for (const row of expired) {
+        this.#database
+          .prepare(
+            `DELETE FROM context_slice_manifests
+             WHERE (slice_id, revision) IN (
+               SELECT context_slice_id, context_slice_revision
+               FROM branch_executions WHERE run_id = ?
+             )`,
+          )
+          .run(row.run_id);
+        this.#database
+          .prepare("DELETE FROM branch_executions WHERE run_id = ?")
+          .run(row.run_id);
+        this.#database
+          .prepare("DELETE FROM branch_groups WHERE run_id = ?")
+          .run(row.run_id);
         this.#database
           .prepare("DELETE FROM durable_workflow_steps WHERE run_id = ?")
           .run(row.run_id);
@@ -2371,6 +3040,8 @@ export class PersistenceStore {
       if (count.count === 0) return 0;
       const bindings = [workspaceId, cutoff];
       for (const [table, column, subquery] of [
+        ["branch_executions", "run_id", runs],
+        ["branch_groups", "run_id", runs],
         ["durable_workflow_steps", "run_id", runs],
         ["durable_workflow_executions", "run_id", runs],
         ["memory_entries", "source_run_id", runs],
@@ -2388,6 +3059,12 @@ export class PersistenceStore {
           .prepare(`DELETE FROM ${table} WHERE ${column} IN (${subquery})`)
           .run(...bindings);
       }
+      this.#database
+        .prepare(
+          `DELETE FROM context_slice_manifests
+           WHERE workspace_id = ? AND created_at < ?`,
+        )
+        .run(...bindings);
       this.#database
         .prepare(
           `DELETE FROM orchestration_requests WHERE workspace_id = ? AND created_at < ?`,
@@ -2422,6 +3099,7 @@ export class PersistenceStore {
       retentionDays: this.getWorkspaceRetention(workspaceId),
       requests: rows("orchestration_requests", "workspace_id = ?"),
       projectContexts: rows("project_context_snapshots", "workspace_id = ?"),
+      contextSlices: rows("context_slice_manifests", "workspace_id = ?"),
       plans: rows("execution_plans", `request_id IN (${requestFilter})`),
       capabilitySnapshots: rows(
         "capability_snapshots",
@@ -2440,6 +3118,8 @@ export class PersistenceStore {
         "durable_workflow_steps",
         `run_id IN (${runFilter})`,
       ),
+      branchGroups: rows("branch_groups", `run_id IN (${runFilter})`),
+      branchExecutions: rows("branch_executions", `run_id IN (${runFilter})`),
       evidence: rows("step_evidence", `run_id IN (${runFilter})`),
       providerExecutionAttempts: rows(
         "provider_execution_attempts",
@@ -2482,6 +3162,29 @@ export class PersistenceStore {
     } finally {
       this.#backupInProgress = false;
     }
+  }
+
+  #branchGroupFromRow(row: Record<string, unknown>): PersistedBranchGroup {
+    const fanIn = row.fan_in_json
+      ? fanInResultSchema.parse(JSON.parse(String(row.fan_in_json)))
+      : undefined;
+    return {
+      runId: String(row.run_id),
+      groupId: String(row.group_id),
+      groupDigest: String(row.group_digest),
+      lifecycle: String(row.lifecycle) as PersistedBranchGroup["lifecycle"],
+      maxConcurrency: Number(row.max_concurrency),
+      maxProviderCalls: Number(row.max_provider_calls),
+      maxOutputBytes: Number(row.max_output_bytes),
+      providerCallsUsed: Number(row.provider_calls_used),
+      outputBytesObserved: Number(row.output_bytes_observed),
+      cancelRequested: Number(row.cancel_requested) === 1,
+      ...(fanIn ? { fanIn } : {}),
+      revision: Number(row.revision),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+      expiresAt: String(row.expires_at),
+    };
   }
 
   #transaction<T>(operation: () => T): T {

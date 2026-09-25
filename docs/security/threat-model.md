@@ -192,3 +192,19 @@ Planner → Policy/Approval → Runtime → Gateway.
 El análisis completo, incluidos private mode, UNKNOWN y riesgos residuales, está
 en [Threat model P3-B2](threat-model-p3-b2.md). P3-B2.0 no implementa controles
 ejecutables ni habilita providers.
+
+## Bounded fan-out/fan-in (P3-B2.1)
+
+P3-B2.1 implementa solo el substrate. Sustitución de branch/profile/slice,
+cross-workspace/cross-objective leakage, capability spoofing, approval replay,
+double dispatch, oversubscription, carrera de terminal, cancelación incierta,
+restart y delegación recursiva se mitigan mediante schemas/bindings versionados,
+digests canónicos, revalidación Runtime, transacciones SQLite, depth uno,
+Evidence por rama y UNKNOWN conservador. Solo ramas de lectura efectivamente
+seguras entran al fan-out inicial. Private mode no persiste workflow, slices o
+branch state y no habilita red.
+
+La cancelación solicitada no prueba terminación. Un timeout o cancel remoto sin
+terminal verificable conserva `unknown`; fan-in queda bloqueado y no existe
+retry automático. Los detalles y riesgos residuales están en
+[Threat model P3-B2](threat-model-p3-b2.md).

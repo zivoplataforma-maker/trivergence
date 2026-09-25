@@ -61,6 +61,13 @@ workflow preliminar; Runtime ejecuta sus pasos por las gateways existentes;
 Evaluation normaliza propuestas y críticas; Strategy produce entonces la
 decisión que alimenta el plan final. Strategy nunca llama providers.
 
+P3-B2.1 implementa el substrate reutilizable de ejecución paralela sin activar
+esa deliberación: Planner entrega `BranchGroup`/`BranchDescriptor` confirmados,
+`ContextSliceBuilder` deriva manifests ligados al Project Context y Runtime
+administra slots, lifecycle, cancelación, budgets y fan-in. La persistencia solo
+conserva referencias/digests; Policy, Approval, Registry y gateways mantienen su
+authority original.
+
 La fachada no importa Electron, filesystem, procesos, red ni adaptadores. Un
 preview debe ser determinista salvo por los identificadores inyectados.
 
@@ -100,8 +107,10 @@ para inventar un flujo global. El motor resuelve dependencias y el Runtime
 despacha únicamente pasos autorizados.
 
 - **Runtime:** convierte planes evaluados y autorizados en ejecuciones con
-  límites, cancelación y correlación. No selecciona estrategias. Su contrato y
-  estados están en [Runtime y aprobaciones](runtime-and-approvals.md).
+  límites, cancelación y correlación. También agenda grupos explícitos con
+  concurrencia acotada y fan-in determinista, sin seleccionar ramas ni
+  estrategias. Su contrato y estados están en
+  [Runtime y aprobaciones](runtime-and-approvals.md).
 - **Workspace:** canoniza rutas y ofrece operaciones acotadas; revalida antes de
   usar para reducir TOCTOU. El límite y las primeras capacidades están en
   [Workspace y tools locales](workspace-and-tools.md).

@@ -136,9 +136,10 @@ La secuencia conceptual es:
 `objetivo → contexto → elegibilidad → [deliberación: propuestas → crítica → evaluación → síntesis] → estrategia → planificación → resolución de capacidades → preflight → policy/aprobación → ejecución → verificación/postflight → evidencia → resultado`
 
 Strategy puede representar rutas secuenciales o paralelas cuando exista la
-capacidad correspondiente. El Runtime actual ejecuta el flujo soportado de forma
-secuencial; fan-out/fan-in permanece `NEXT/PLANNED` y nunca se presume gratuito
-ni seguro.
+capacidad correspondiente. El Runtime soporta ahora un substrate `CURRENT/CORE`
+de fan-out/fan-in acotado para ramas explícitas `PURE`/`READ_ONLY`, con slices,
+budget, cancelación y estado durable. Strategy Deliberation sobre ese substrate
+permanece `NEXT/PLANNED`; paralelismo nunca se presume gratuito ni seguro.
 
 ### 1.1 Strategy Deliberation --- contrato `ACCEPTED`, ejecución `NEXT/PLANNED`
 

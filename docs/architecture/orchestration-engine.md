@@ -60,8 +60,23 @@ consume el `DeliberationOutcome` para producir la `StrategyDecision`. Solo
 entonces Planner crea el plan final.
 
 Proposals, critiques y synthesis son datos no confiables. Provider route es
-provenance, no identidad lógica ni voto. P3-B2.0 no añade estas APIs al código;
-P3-B2.1 implementará el substrate y P3-B2.2 la integración deliberativa.
+provenance, no identidad lógica ni voto. P3-B2.1 ya aporta el substrate de
+ramas/slices/fan-in, pero no añade estos objetos deliberativos; P3-B2.2 sigue
+siendo la integración pendiente.
+
+### Bounded fan-out/fan-in
+
+El contrato ejecutable v1 separa `BranchGroup`, `BranchDescriptor`,
+`ContextSliceManifest`, `BranchExecutionState` y `FanInResult`. Planner describe
+identidades/dependencias; Runtime es el único scheduler. Una rama fija plan,
+Project Context, perfil, capability, policy binding, slice y presupuesto por
+digest. Runtime revalida esas referencias antes del dispatch y rechaza efectos
+que no sean una lectura efectivamente segura.
+
+Los workers toman ramas en orden de `branchId` y nunca superan `maxConcurrency`.
+Fan-in ordena resultados por identidad y referencia Evidence; `UNKNOWN` lo
+bloquea. El paso dependiente posterior solo se vuelve ejecutable tras fan-in
+confirmado. No existe nested fan-out ni autonomía recursiva.
 
 ### Project Context
 

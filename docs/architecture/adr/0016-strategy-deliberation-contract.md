@@ -293,11 +293,11 @@ deliberación; no una nueva fuente de verdad. P3-B2.0 no implementa UI.
 
 ## Compatibilidad y consecuencias
 
-El flujo DIRECT actual permanece válido y no cambia. P3-B2.1 implementará el
-substrate acotado, context slicing y estado durable de ramas. P3-B2.2
-implementará los contratos de proposal/crítica/evaluación/decisión sobre ese
-substrate. Ambos deberán versionar schemas sin modificar retrospectivamente este
-ADR.
+El flujo DIRECT actual permanece válido y no cambia. P3-B2.1 implementó el
+substrate acotado, context slicing y estado durable de ramas sin implementar
+deliberación. P3-B2.2 implementará los contratos de
+proposal/crítica/evaluación/decisión sobre ese substrate. Sus schemas se
+versionan sin modificar retrospectivamente esta decisión.
 
 Costes: dos fases de planificación, mayor latencia/coste, nueva persistencia
 durable de ramas, UI de degradación y más superficie de threat model.

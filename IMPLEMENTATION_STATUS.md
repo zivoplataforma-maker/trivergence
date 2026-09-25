@@ -22,13 +22,50 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 | P3-E1 — Durable Workflow State           | `DONE`    | Estado/steps SQLite, restart conservador, budgets/approvals y resume seguro verificados.                                |
 | P3-B1 — Agent Profiles                   | `DONE`    | Perfiles v1 declarativos, selección/validación, refs durables, provenance y regresiones verificadas.                    |
 | P3-B2.0 — Strategy Deliberation Contract | `DONE`    | ADR-0016 y arquitectura aceptados; no hay contratos ejecutables, concurrencia ni deliberación en Runtime.               |
-| P3-B2 — deliberación y fan-out/fan-in    | `PARTIAL` | B2.0 documental completo; B2.1 y B2.2 permanecen `PLANNED`.                                                             |
-| P3 — evolución arquitectónica            | `PARTIAL` | P3-A1, P3-D0, P3-E1, P3-B1 y P3-B2.0 completos; fases ejecutables posteriores pendientes.                               |
+| P3-B2.1 — bounded fan-out/fan-in         | `DONE`    | Runtime acotado, slices v1, estado durable, budgets, cancelación, UNKNOWN y 50 tests nuevos verificados.                |
+| P3-B2 — deliberación y fan-out/fan-in    | `PARTIAL` | B2.0 y substrate B2.1 completos; Strategy Deliberation B2.2 permanece `PLANNED`.                                        |
+| P3 — evolución arquitectónica            | `PARTIAL` | P3-A1, P3-D0, P3-E1, P3-B1, P3-B2.0 y P3-B2.1 completos; fases posteriores pendientes.                                  |
+
+## P3-B2.1 — bounded fan-out/fan-in + context slicing (2026-09-25)
+
+Estado: `DONE`. P3-B2 general continúa `PARTIAL`; B2.2 no comenzó.
+
+- `RuntimeEngine` conserva ownership de scheduling y ejecuta grupos v1 con
+  cantidad y concurrencia separadas, orden estable por `branchId` y profundidad
+  máxima uno. No existe `ParallelRuntime`, scheduler de agente ni delegación
+  recursiva.
+- `ContextSliceBuilder` produce manifests inmutables, canónicos, acotados y
+  ligados a Project Context, workspace, objective, group y branch exactos. Cada
+  branch recibe solo su referencia; cualquier sustitución o ampliación falla
+  cerrado.
+- Migration `0011_bounded_branch_execution` persiste slices, grupos y bindings
+  de ramas por referencias/digests. El lifecycle autoritativo sigue en Runtime y
+  `durable_workflow_steps`; no se copian outputs, Memory, Evidence, perfiles ni
+  Project Context.
+- Los budgets `run → group → branch` se validan antes del dispatch y se cargan
+  en transacciones `BEGIN IMMEDIATE`; contadores y dispatch IDs no se regeneran
+  tras restart. `RUNNING` interrumpido pasa a `UNKNOWN`, bloquea fan-in y nunca
+  produce retry automático.
+- Cancelación por rama/grupo separa request de terminal confirmado. Fan-in
+  referencia Evidence y expresa `confirmed`, `degraded`, `blocked`, `failed` o
+  `cancelled`; nunca convierte `UNKNOWN` en fallo.
+- Solo efectos efectivamente `PURE`/`READ_ONLY` y de lectura intrínseca son
+  elegibles inicialmente. Capability, Policy y Approval permanecen fronteras
+  distintas; approvals no se clonan.
+- Private mode permite únicamente ejecución efímera local compatible: no crea
+  filas durables de workflow, ramas ni slices y continúa bloqueando red.
+- Evidencia: 50 tests nuevos y 290 tests totales, incluido fan-out real, límite
+  concurrente, fan-in y continuación dependiente, cancelación y crash/reopen.
+  Ver [informe P3-B2.1](docs/product/p3-b2-1-bounded-fanout-report.md).
+
+No se implementaron proposals, critiques, evaluación deliberativa, synthesis,
+voting ni selección multi-modelo. Reference Provider continúa siendo el único
+provider ejecutable; M5 y M7 permanecen `PARTIAL`.
 
 ## P3-B2.0 — Strategy Deliberation Contract (2026-09-25)
 
-Estado: `DONE` exclusivamente como decisión arquitectónica. P3-B2.1 y P3-B2.2 no
-comenzaron.
+Estado: `DONE` exclusivamente como decisión arquitectónica. P3-B2.1 implementa
+el substrate; P3-B2.2 no comenzó.
 
 - ADR-0016 fija un protocolo de dos planes: un `DeliberationPlan` preliminar
   pasa por Planner, Policy/Approval, Runtime y Provider Gateway; solo su outcome
@@ -41,7 +78,7 @@ comenzaron.
   impedir falso consenso. Los participantes se filtran por elegibilidad,
   privacidad, budget y Policy antes de cualquier dispatch futuro.
 - `DIRECT` conserva el flujo actual. `DELIBERATIVE` permanece sin implementar
-  hasta P3-B2.1/B2.2.
+  hasta P3-B2.2.
 - Evidencia:
   [ADR-0016](docs/architecture/adr/0016-strategy-deliberation-contract.md),
   [informe P3-B2.0](docs/product/p3-b2-0-strategy-deliberation-report.md) y
@@ -52,7 +89,7 @@ ejecutable.
 
 ## P3-B1 --- Agent Profiles (2026-09-25)
 
-Estado: `DONE`. P3-B2.0 está cerrado documentalmente; B2.1/B2.2 no comenzaron.
+Estado: `DONE`. P3-B2.0 y B2.1 están cerrados; B2.2 no comenzó.
 
 - El catálogo v1 convierte los roles M6 existentes en perfiles declarativos
   `planning`, `critique` y `synthesis`; ninguno contiene provider ID, modelo,
@@ -403,8 +440,8 @@ sistemas usados durante la investigación:
   restrictivos, sin autoridad propia;
 - `DONE` P3-B2.0: contrato arquitectónico de Strategy Deliberation, sin
   implementación ejecutable;
-- `PLANNED` P3-B2.1: fan-out/fan-in con concurrencia, cancelación, context
-  slicing, budget agregado, durable branch state y provenance;
+- `DONE` P3-B2.1: fan-out/fan-in con concurrencia, cancelación, context slicing,
+  budget agregado, durable branch state y provenance;
 - `PLANNED` P3-B2.2: proposals, crítica, Evaluation y selección/síntesis antes
   del plan ejecutable;
 - `PLANNED` P3-C: Tool Gateway mediante MCP bajo Registry → Policy → Approval →
@@ -461,8 +498,9 @@ dependencias por documentar esta dirección.
 ## Alineación conceptual de Strategy Deliberation (2026-09-25)
 
 Estado: `DONE` como decisión arquitectónica, `PENDING` como capacidad
-ejecutable. P3-B1 sigue `DONE`; P3-B2.1/B2.2 no comenzaron; M5 y M7 continúan
-`PARTIAL`; Reference Provider sigue siendo el único provider ejecutable.
+deliberativa ejecutable. P3-B1 y el substrate P3-B2.1 están `DONE`; B2.2 no
+comenzó; M5 y M7 continúan `PARTIAL`; Reference Provider sigue siendo el único
+provider ejecutable.
 
 La definición de producto queda alineada así:
 
