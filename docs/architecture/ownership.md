@@ -23,6 +23,7 @@ fuente.
 | Workflow durable state | Representación revisionada del lifecycle autoritativo de Runtime                   | run/plan/steps, referencias, transiciones y budgets                           | estado recuperable y bloqueo explícito tras restart         | no es snapshot, provider recovery, Audit, Evidence ni output store     |
 | Effect Assessment      | Evaluación efectiva versionada de severidad y compensación producida por Planner   | kind, risk/destructive, destino, declaración y policy metadata                | severity, compensation, versión y digest                    | no permite que Runtime, Policy o adapters reclasifiquen por separado   |
 | Capability Registry    | Estado normalizado de capabilities observadas                                      | publicaciones versionadas, health y disponibilidad                            | inventario que consumen Strategy y Planner                  | no ejecuta, autentica ni concede confianza implícita                   |
+| Agent Profile Catalog  | Configuración declarativa versionada de responsabilidades y límites                | perfiles locales y referencias a capabilities del Registry                    | ID/revisión/digest seleccionados para el plan               | no concede capabilities, Policy, Approval ni identidad de provider     |
 | Provider Gateway       | Frontera existente formada por `ProviderAdapter`, `AdapterHost` y dispatcher       | request preparado, manifest, aprobación y budget                              | eventos/resultados normalizados y provenance                | no existe un segundo camino directo Runtime→provider                   |
 | Execution Gateway      | Frontera normalizada hacia backends de ejecución                                   | acción autorizada, effect assessment, Policy, Approval y backend              | preparación, resultado, límites y provenance                | no reemplaza Runtime, Policy, Approval, Registry ni supervisor         |
 | Tool Gateway           | Adaptación futura de tools/resources/prompts a capabilities                        | protocolos de tools y configuración allowlisted                               | descriptors y resultados normalizados                       | no implementa supervisor, sandbox o autoridad propios                  |
@@ -59,7 +60,10 @@ digests y límites. Execution Gateway está implementado desde P3-D0 como fronte
 v1 sobre el supervisor local existente; no es un sandbox ni una segunda máquina
 de estados. Durable workflow state está implementado desde P3-E1 como
 representación SQLite del lifecycle de Runtime; no convierte ese estado mutable
-en `WorkflowExecutionSnapshot`. Esta definición no afirma que Project
+en `WorkflowExecutionSnapshot`. P3-B1 añade un catálogo estático versionado de
+perfiles, no una segunda fuente de capabilities: las referencias de plan y
+workflow durable identifican la configuración usada, pero Registry, Policy y
+Approval conservan su autoridad. Esta definición no afirma que Project
 Intelligence, Tool Gateway, Workflow Snapshot o Trace estén implementados. El
 estado verificable permanece en `IMPLEMENTATION_STATUS.md` y el orden en
 `ROADMAP.md`.

@@ -410,6 +410,15 @@ export const migrations: readonly Migration[] = [
         ON durable_workflow_steps(run_id, lifecycle);
     `,
   },
+  {
+    version: "0010_agent_profile_references",
+    sql: `
+      ALTER TABLE plan_steps ADD COLUMN agent_profiles_json TEXT NOT NULL DEFAULT '[]'
+        CHECK (length(agent_profiles_json) <= 2048);
+      ALTER TABLE durable_workflow_steps ADD COLUMN agent_profiles_json TEXT NOT NULL DEFAULT '[]'
+        CHECK (length(agent_profiles_json) <= 2048);
+    `,
+  },
 ];
 
 const checksum = (sql: string) =>

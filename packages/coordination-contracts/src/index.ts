@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { agentProfileReferenceSchema } from "@trivergence/contracts";
 
 const digestSchema = z.string().regex(/^[a-f0-9]{64}$/u);
 const boundedTextSchema = z.string().max(65_536);
@@ -60,11 +61,12 @@ export const memoryRecallResultSchema = z.object({
 });
 export type MemoryRecallResult = z.infer<typeof memoryRecallResultSchema>;
 
-export const agentRoleSchema = z.enum(["planner", "critic", "synthesizer"]);
+export const agentRoleSchema = z.string().min(1).max(120);
 export type AgentRole = z.infer<typeof agentRoleSchema>;
 
 export const agentContributionSchema = z.object({
   role: agentRoleSchema,
+  profile: agentProfileReferenceSchema.optional(),
   response: boundedTextSchema,
   responseDigest: digestSchema,
   requestDigest: digestSchema,

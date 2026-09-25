@@ -1,6 +1,6 @@
 # Roadmap de Trivergence
 
-Última revisión: 2026-09-24
+Última revisión: 2026-09-25
 
 El roadmap usa puertas de evidencia, no porcentajes subjetivos. Trivergence
 evoluciona desde un núcleo de orquestación verificable hacia una capa
@@ -259,15 +259,15 @@ acción para invocarla tras reabrir la aplicación.
 
 ## P3-B1 — Agent Profiles declarativos
 
-Estado: `PLANNED`. Dependencias: P3-A1 y modelo durable de identidad/estado de
-P3-E1.
+Estado: `DONE` (2026-09-25). Dependencias: P3-A1 y P3-E1.
 
-Objetivo: perfiles por capabilities, permisos, budgets, contexto, termination y
-evidence. Los roles M6 fijos continúan siendo implementación actual hasta que
-esta fase tenga evidencia.
-
-Puerta de salida futura: un perfil no amplía autoridad y su selección es
-explicable, versionada y auditable.
+Resultado: los tres roles secuenciales M6 se declaran como perfiles v1 con
+responsabilidad, requisitos abstractos de capability, contexto y límites. Un
+catálogo versionado enlaza el plan con ID/revisión/digest; Strategy descarta
+rutas inelegibles, Planner fija las referencias y Runtime las revalida. SQLite
+conserva las referencias exactas en plan y workflow durable. El perfil no
+concede Policy ni Approval, no selecciona provider y no crea budget nuevo.
+Reference Provider continúa siendo el único ejecutable. No hay fan-out/fan-in.
 
 ## P3-B2 — fan-out/fan-in acotado
 

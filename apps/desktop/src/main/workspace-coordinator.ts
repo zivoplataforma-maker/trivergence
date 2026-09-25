@@ -43,6 +43,7 @@ import {
   AgentTeam,
   AgentTeamDispatcher,
   createAgentCapabilities,
+  createAgentProfileCatalog,
 } from "@trivergence/agents";
 import {
   coordinationCapabilityIds,
@@ -172,8 +173,6 @@ export class DesktopWorkspaceCoordinator {
         adapter: referenceAdapter,
       },
     ]);
-    const agentTeam = new AgentTeam(adapterHost, referenceProviderCapabilityId);
-    const workflow = new WorkflowEngine(agentTeam);
     const capabilities = [
       ...createWorkspaceCapabilities(false),
       referenceCapability,
@@ -185,7 +184,21 @@ export class DesktopWorkspaceCoordinator {
       `workspace-${root.fingerprint.slice(0, 12)}-1`,
       capabilities,
     );
-    const engine = new OrchestrationEngine(registry, randomUUID, sha256);
+    const profiles = createAgentProfileCatalog(sha256);
+    const agentTeam = new AgentTeam(
+      adapterHost,
+      referenceProviderCapabilityId,
+      {
+        profiles: profiles.boundProfiles(coordinationCapabilityIds.agentTeam),
+      },
+    );
+    const workflow = new WorkflowEngine(agentTeam);
+    const engine = new OrchestrationEngine(
+      registry,
+      randomUUID,
+      sha256,
+      profiles,
+    );
     const runtime = new RuntimeEngine({
       persistence: this.persistence,
       dispatchers: [
@@ -199,6 +212,8 @@ export class DesktopWorkspaceCoordinator {
       ],
       revalidate: (preview) => engine.revalidate(preview),
       evaluatePolicy,
+      validateAgentProfiles: (step, context) =>
+        engine.assertAgentProfileBinding(step, context),
       sha256,
     });
     const descriptor = desktopWorkspaceSchema.parse({

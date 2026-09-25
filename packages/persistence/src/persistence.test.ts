@@ -246,6 +246,7 @@ const durableRecords = (
     revision: 1,
     dispatchStarted: false,
     effectClass: "read_only",
+    agentProfiles: [],
     createdAt: NOW,
     updatedAt: NOW,
   },
@@ -266,6 +267,93 @@ afterEach(() => {
 });
 
 describe("PersistenceStore", () => {
+  it("persists exact agent profile references across SQLite reopen", () => {
+    const path = databasePath();
+    const refs = [
+      {
+        profileId: "agent.profile.review",
+        revision: 3,
+        digest: "7".repeat(64),
+      },
+    ];
+    const source = standardPreview();
+    const profiled = {
+      ...source,
+      plan: {
+        ...source.plan,
+        steps: source.plan.steps.map((step) => ({
+          ...step,
+          agentProfiles: refs,
+        })),
+      },
+    };
+    const first = PersistenceStore.open(path, { clock: () => new Date(NOW) });
+    first.persistPreview(profiled);
+    first.createRun(run);
+    const [workflow, step] = durableRecords(profiled);
+    first.createDurableWorkflow(workflow, [{ ...step, agentProfiles: refs }]);
+    first.close();
+    const reopened = PersistenceStore.open(path, {
+      clock: () => new Date(NOW),
+    });
+    expect(reopened.listDurableWorkflowSteps(run.id)[0]?.agentProfiles).toEqual(
+      refs,
+    );
+    reopened.close();
+  });
+
+  it("rejects durable profile substitution against the persisted plan", () => {
+    const store = PersistenceStore.open(databasePath(), {
+      clock: () => new Date(NOW),
+    });
+    const source = standardPreview();
+    const refs = [
+      {
+        profileId: "agent.profile.review",
+        revision: 1,
+        digest: "7".repeat(64),
+      },
+    ];
+    const profiled = {
+      ...source,
+      plan: {
+        ...source.plan,
+        steps: source.plan.steps.map((step) => ({
+          ...step,
+          agentProfiles: refs,
+        })),
+      },
+    };
+    store.persistPreview(profiled);
+    store.createRun(run);
+    const [workflow, step] = durableRecords(profiled);
+    expect(() =>
+      store.createDurableWorkflow(workflow, [
+        {
+          ...step,
+          agentProfiles: [{ ...refs[0]!, revision: 2 }],
+        },
+      ]),
+    ).toThrow(/do not match/u);
+    store.close();
+  });
+
+  it("migrates legacy plan and durable rows to empty profile references", () => {
+    const path = databasePath();
+    const raw = new DatabaseSync(path);
+    migrateDatabase(raw, migrations.slice(0, -1));
+    raw.close();
+    const store = PersistenceStore.open(path, { clock: () => new Date(NOW) });
+    const source = standardPreview();
+    store.persistPreview(source);
+    store.createRun(run);
+    const [workflow, step] = durableRecords(source);
+    store.createDurableWorkflow(workflow, [step]);
+    expect(store.listDurableWorkflowSteps(run.id)[0]?.agentProfiles).toEqual(
+      [],
+    );
+    store.close();
+  });
   it("reopens durable workflow state without resetting budget or provenance references", () => {
     const path = databasePath();
     const durablePreview = standardPreview();

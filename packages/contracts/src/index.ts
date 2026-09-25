@@ -338,6 +338,50 @@ export const capabilityDescriptorSchema = z.object({
 });
 export type CapabilityDescriptor = z.infer<typeof capabilityDescriptorSchema>;
 
+/** Declarative work assignment, never a grant of capability or authority. */
+export const agentProfileReferenceSchema = z.strictObject({
+  profileId: capabilityIdSchema,
+  revision: z.number().int().positive(),
+  digest: sha256ValueSchema,
+});
+export type AgentProfileReference = z.infer<typeof agentProfileReferenceSchema>;
+
+export const agentCapabilityRequirementSchema = z.strictObject({
+  subsystem: subsystemKindSchema,
+  mode: capabilityModeSchema,
+  actionKinds: z.array(actionKindSchema).min(1).max(8),
+  networkAllowed: z.boolean(),
+});
+
+export const agentProfileSchema = z.strictObject({
+  schemaVersion: z.literal("1"),
+  profileId: capabilityIdSchema,
+  revision: z.number().int().positive(),
+  responsibility: z.string().min(1).max(120),
+  guidance: z.string().min(1).max(500),
+  requiredCapabilities: z.array(agentCapabilityRequirementSchema).min(1).max(8),
+  optionalCapabilities: z.array(agentCapabilityRequirementSchema).max(8),
+  constraints: z.strictObject({
+    allowedActionKinds: z.array(actionKindSchema).min(1).max(8),
+    networkAllowed: z.boolean(),
+    requireObjective: z.boolean(),
+    requireWorkspace: z.boolean(),
+  }),
+  budget: z.strictObject({
+    maxExecutions: z.number().int().min(1).max(4),
+    maxInputBytes: z.number().int().min(1).max(65_536),
+    maxOutputBytes: z.number().int().min(1).max(65_536),
+    timeoutMs: z.number().int().min(10).max(60_000),
+    maxCostMicrounits: z.number().int().nonnegative().max(1_000_000),
+  }),
+  provenance: z.strictObject({
+    publisher: z.string().min(1).max(120),
+    version: z.string().min(1).max(40),
+  }),
+  digest: sha256ValueSchema,
+});
+export type AgentProfile = z.infer<typeof agentProfileSchema>;
+
 export const orchestrationRequestSchema = z
   .object({
     id: z.string().uuid(),
@@ -409,6 +453,7 @@ export const plannedStepSchema = z.object({
   dependsOn: z.array(z.string().min(1).max(80)).max(32),
   action: actionRequestSchema,
   policy: policyDecisionSchema,
+  agentProfiles: z.array(agentProfileReferenceSchema).min(1).max(4).optional(),
 });
 export type PlannedStep = z.infer<typeof plannedStepSchema>;
 
@@ -762,6 +807,7 @@ export const durableWorkflowStepSchema = z.object({
   revision: z.number().int().positive(),
   dispatchStarted: z.boolean(),
   effectClass: operationEffectClassSchema,
+  agentProfiles: z.array(agentProfileReferenceSchema).max(4).default([]),
   approvalId: z.string().uuid().optional(),
   attemptId: z.string().uuid().optional(),
   evidenceId: z.string().uuid().optional(),

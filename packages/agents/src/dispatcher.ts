@@ -52,6 +52,9 @@ export class AgentTeamDispatcher implements StepDispatcher {
   }
 
   async dispatch(context: DispatchContext): Promise<DispatchResult> {
+    if (!this.team.matchesReferences(context.step.agentProfiles)) {
+      throw new Error("Agent profile binding does not match the planned team");
+    }
     const dependencyId = context.step.dependsOn[0];
     const memory = memoryRecallResultSchema.parse(
       dependencyId ? context.outputs[dependencyId] : undefined,

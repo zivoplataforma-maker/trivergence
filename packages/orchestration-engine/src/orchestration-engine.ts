@@ -8,6 +8,7 @@ import {
   type ExecutionRun,
   type RevalidationResult,
   type StepEvidence,
+  type PlannedStep,
 } from "@trivergence/contracts";
 
 import type { CapabilityRegistry } from "./capability-registry.js";
@@ -19,9 +20,10 @@ import {
   type ProjectContextBuildOptions,
 } from "./project-context-builder.js";
 import { StrategyEngine } from "./strategy-engine.js";
+import type { AgentProfileCatalog } from "./agent-profile-catalog.js";
 
 export class OrchestrationEngine {
-  readonly #strategy = new StrategyEngine();
+  readonly #strategy: StrategyEngine;
   readonly #planner: ExecutionPlanner;
   readonly #evaluation = new EvaluationEngine();
   readonly #integrity: IntegrityEngine;
@@ -31,8 +33,10 @@ export class OrchestrationEngine {
     private readonly registry: CapabilityRegistry,
     createId: IdFactory,
     digest: DigestFunction,
+    readonly agentProfiles?: AgentProfileCatalog,
   ) {
-    this.#planner = new ExecutionPlanner(createId);
+    this.#strategy = new StrategyEngine(agentProfiles);
+    this.#planner = new ExecutionPlanner(createId, agentProfiles);
     this.#integrity = new IntegrityEngine(digest);
     this.#projectContext = new ProjectContextBuilder(
       registry,
@@ -45,7 +49,17 @@ export class OrchestrationEngine {
     input: OrchestrationRequest,
     options: ProjectContextBuildOptions = {},
   ): ProjectContextSnapshot {
-    return this.#projectContext.build(input, options);
+    return this.#projectContext.build(input, {
+      ...options,
+      ...(this.agentProfiles
+        ? {
+            relevantCapabilityIds: [
+              ...(options.relevantCapabilityIds ?? []),
+              ...this.agentProfiles.relevantCapabilityIds(input, this.registry),
+            ],
+          }
+        : {}),
+    });
   }
 
   preview(
@@ -53,13 +67,18 @@ export class OrchestrationEngine {
     contextOptions: ProjectContextBuildOptions = {},
   ): OrchestrationPreview {
     const request = orchestrationRequestSchema.parse(input);
-    const projectContext = this.#projectContext.build(request, contextOptions);
+    const projectContext = this.buildProjectContext(request, contextOptions);
     const strategy = this.#strategy.select(
       request,
       this.registry,
       projectContext,
     );
-    const plan = this.#planner.plan(request, strategy, this.registry);
+    const plan = this.#planner.plan(
+      request,
+      strategy,
+      this.registry,
+      projectContext,
+    );
     const evaluation = this.#evaluation.evaluatePreflight(plan);
     const registrySnapshot = this.#integrity.createRegistrySnapshot(
       this.registry,
@@ -87,6 +106,19 @@ export class OrchestrationEngine {
 
   revalidate(preview: OrchestrationPreview): RevalidationResult {
     return this.#integrity.revalidate(preview, this.registry);
+  }
+
+  assertAgentProfileBinding(
+    step: PlannedStep,
+    context: ProjectContextSnapshot,
+  ): void {
+    if (!this.agentProfiles) {
+      if (step.agentProfiles?.length) {
+        throw new Error("Agent profile catalog is unavailable");
+      }
+      return;
+    }
+    this.agentProfiles.assertStep(step, context, this.registry);
   }
 
   evaluateOutcome(

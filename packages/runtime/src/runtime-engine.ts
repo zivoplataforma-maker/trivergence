@@ -142,6 +142,10 @@ export interface RuntimeDependencies {
     action: PlannedStep["action"],
   ) => PolicyDecision;
   readonly sha256: DigestFunction;
+  readonly validateAgentProfiles?: (
+    step: PlannedStep,
+    context: OrchestrationPreview["projectContext"],
+  ) => void;
   readonly clock?: () => Date;
   readonly idFactory?: () => string;
 }
@@ -207,6 +211,7 @@ export class RuntimeEngine {
   readonly #revalidate: RuntimeDependencies["revalidate"];
   readonly #evaluatePolicy: RuntimeDependencies["evaluatePolicy"];
   readonly #sha256: DigestFunction;
+  readonly #validateAgentProfiles?: RuntimeDependencies["validateAgentProfiles"];
   readonly #clock: () => Date;
   readonly #idFactory: () => string;
   readonly #activeRuns = new Map<
@@ -224,6 +229,7 @@ export class RuntimeEngine {
     this.#revalidate = dependencies.revalidate;
     this.#evaluatePolicy = dependencies.evaluatePolicy;
     this.#sha256 = dependencies.sha256;
+    this.#validateAgentProfiles = dependencies.validateAgentProfiles;
     this.#clock = dependencies.clock ?? (() => new Date());
     this.#idFactory = dependencies.idFactory ?? randomUUID;
   }
@@ -435,6 +441,18 @@ export class RuntimeEngine {
             ),
           ),
       );
+      const profileBindingsChanged = resolvedSteps.some(({ step }) => {
+        const durableStep = resumeSteps.find(
+          (candidate) => candidate.stepId === step.id,
+        );
+        return (
+          !durableStep ||
+          !sameCanonicalValue(
+            durableStep.agentProfiles,
+            step.agentProfiles ?? [],
+          )
+        );
+      });
       if (
         !existingRun ||
         !existingWorkflow ||
@@ -449,6 +467,7 @@ export class RuntimeEngine {
           preview.projectContext.digest ||
         existingWorkflow.workspaceId !== preview.projectContext.workspace.id ||
         unsafe ||
+        profileBindingsChanged ||
         unavailableDependencyOutput
       ) {
         return this.#blocked(
@@ -516,6 +535,7 @@ export class RuntimeEngine {
             revision: 1,
             dispatchStarted: false,
             effectClass: classifyOperationEffect(step.action),
+            agentProfiles: step.agentProfiles ?? [],
             createdAt: now,
             updatedAt: now,
           }),
@@ -1024,6 +1044,10 @@ export class RuntimeEngine {
   }
 
   #resolveStep(preview: OrchestrationPreview, step: PlannedStep): ResolvedStep {
+    if (step.agentProfiles?.length && !this.#validateAgentProfiles) {
+      throw new Error(`Agent profile catalog unavailable for ${step.id}`);
+    }
+    this.#validateAgentProfiles?.(step, preview.projectContext);
     const policy = policyDecisionSchema.parse(
       this.#evaluatePolicy(preview.request.profile, step.action),
     );

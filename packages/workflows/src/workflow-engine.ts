@@ -88,7 +88,14 @@ export class WorkflowEngine {
       remaining.costMicrounits >= 0 &&
       remaining.timeoutMs >= 10
     ) {
+      const synthesisProfile = input.team.contributions.find(
+        (contribution) => contribution.role === "synthesizer",
+      )?.profile;
+      if (!synthesisProfile) {
+        throw new Error("Synthesis profile provenance is required for repair");
+      }
       const repaired = await this.team.repair({
+        profile: synthesisProfile,
         goal: input.goal,
         candidate,
         budget: {

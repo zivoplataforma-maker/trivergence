@@ -4,6 +4,7 @@ import {
   type CapabilityDescriptor,
   type ExecutionPlan,
   type OrchestrationRequest,
+  type ProjectContextSnapshot,
   type PlanIssue,
   type PlannedStep,
   type StrategyDecision,
@@ -11,18 +12,23 @@ import {
 import { evaluatePolicy } from "@trivergence/policy-engine";
 
 import type { CapabilityRegistry } from "./capability-registry.js";
+import type { AgentProfileCatalog } from "./agent-profile-catalog.js";
 
 const MAX_PLAN_STEPS = 256;
 
 export type IdFactory = () => string;
 
 export class ExecutionPlanner {
-  constructor(private readonly createId: IdFactory) {}
+  constructor(
+    private readonly createId: IdFactory,
+    private readonly agentProfiles?: AgentProfileCatalog,
+  ) {}
 
   plan(
     request: OrchestrationRequest,
     strategy: StrategyDecision,
     registry: CapabilityRegistry,
+    projectContext?: ProjectContextSnapshot,
   ): ExecutionPlan {
     const issues: PlanIssue[] = [];
     const ordered: CapabilityDescriptor[] = [];
@@ -62,6 +68,17 @@ export class ExecutionPlanner {
         }),
         action,
         policy: evaluatePolicy(request.profile, action),
+        ...(this.agentProfiles &&
+        projectContext &&
+        capability.subsystem === "agent"
+          ? {
+              agentProfiles: this.agentProfiles.selectForStep(
+                capability,
+                projectContext,
+                registry,
+              ),
+            }
+          : {}),
       };
     });
 

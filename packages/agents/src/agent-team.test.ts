@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   coordinationBudgetSchema,
@@ -11,10 +11,14 @@ import {
   type ProviderAdapter,
 } from "@trivergence/provider-adapters";
 import { describe, expect, it } from "vitest";
+import { AgentProfileCatalog } from "@trivergence/orchestration-engine";
 
 import { AgentTeam } from "./agent-team.js";
+import { createAgentProfileCatalog, initialAgentProfiles } from "./profiles.js";
 
 const ZERO_DIGEST = "0".repeat(64);
+const sha256 = (value: string) =>
+  createHash("sha256").update(value, "utf8").digest("hex");
 const hosted = (adapter: ProviderAdapter) =>
   new AdapterHost([
     {
@@ -114,5 +118,115 @@ describe("AgentTeam", () => {
         signal: new AbortController().signal,
       }),
     ).rejects.toThrow(/budget/u);
+  });
+
+  it("keeps exact profile identity in sequential contribution provenance", async () => {
+    const profiles = createAgentProfileCatalog(sha256).boundProfiles(
+      "agent.reference.team",
+    );
+    const team = new AgentTeam(
+      hosted(new ReferenceProviderAdapter()),
+      referenceProviderCapabilityId,
+      { profiles },
+    );
+    const result = await team.execute({
+      goal: "Verificar provenance declarativa",
+      memory: memoryRecallResultSchema.parse({
+        schemaVersion: "1",
+        namespace: randomUUID(),
+        items: [],
+        bytes: 0,
+        truncated: false,
+        provenanceDigest: ZERO_DIGEST,
+      }),
+      budget: coordinationBudgetSchema.parse({}),
+      signal: new AbortController().signal,
+    });
+    expect(result.contributions.map((item) => item.profile?.profileId)).toEqual(
+      profiles.map((profile) => profile.profileId),
+    );
+    expect(result.contributions.map((item) => item.role)).toEqual([
+      "planner",
+      "critic",
+      "synthesizer",
+    ]);
+  });
+
+  it("rejects plan profile substitution before provider dispatch", () => {
+    const profiles = createAgentProfileCatalog(sha256).boundProfiles(
+      "agent.reference.team",
+    );
+    const team = new AgentTeam(
+      hosted(new ReferenceProviderAdapter()),
+      referenceProviderCapabilityId,
+      { profiles },
+    );
+    const refs = profiles.map((profile) => ({
+      profileId: profile.profileId,
+      revision: profile.revision,
+      digest: profile.digest,
+    }));
+    expect(team.matchesReferences(refs)).toBe(true);
+    expect(
+      team.matchesReferences([
+        { ...refs[0]!, digest: ZERO_DIGEST },
+        ...refs.slice(1),
+      ]),
+    ).toBe(false);
+  });
+
+  it("uses profile limits only to restrict the shared budget", async () => {
+    const restrictive = initialAgentProfiles.map((profile, index) =>
+      index === 0
+        ? { ...profile, budget: { ...profile.budget, maxOutputBytes: 1 } }
+        : profile,
+    );
+    const profiles = new AgentProfileCatalog(
+      restrictive,
+      {
+        "agent.reference.team": restrictive.map((profile) => profile.profileId),
+      },
+      sha256,
+    ).boundProfiles("agent.reference.team");
+    const team = new AgentTeam(
+      hosted(new ReferenceProviderAdapter()),
+      referenceProviderCapabilityId,
+      { profiles },
+    );
+    await expect(
+      team.execute({
+        goal: "No ampliar el budget",
+        memory: memoryRecallResultSchema.parse({
+          schemaVersion: "1",
+          namespace: randomUUID(),
+          items: [],
+          bytes: 0,
+          truncated: false,
+          provenanceDigest: ZERO_DIGEST,
+        }),
+        budget: coordinationBudgetSchema.parse({ maxOutputBytes: 65_536 }),
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow(/budget/u);
+  });
+
+  it("rejects repair against a substituted synthesis profile", async () => {
+    const team = new AgentTeam(
+      hosted(new ReferenceProviderAdapter()),
+      referenceProviderCapabilityId,
+    );
+    await expect(
+      team.repair({
+        goal: "Reparar",
+        candidate: "Candidato",
+        budget: coordinationBudgetSchema.parse({}),
+        signal: new AbortController().signal,
+        profile: {
+          profileId: "agent.profile.synthesis",
+          revision: 1,
+          digest: ZERO_DIGEST,
+        },
+      }),
+    ).rejects.toThrow(/unavailable/u);
   });
 });

@@ -274,6 +274,10 @@ const validRevalidation = () => ({
 const runtimeFixture = (
   preview: OrchestrationPreview,
   dispatcher: StepDispatcher | readonly StepDispatcher[],
+  validateAgentProfiles?: (
+    step: PlannedStep,
+    context: ProjectContextSnapshot,
+  ) => void,
 ) => {
   let time = NOW;
   const ids = [
@@ -291,6 +295,7 @@ const runtimeFixture = (
     dispatchers: Array.isArray(dispatcher) ? dispatcher : [dispatcher],
     revalidate: validRevalidation,
     evaluatePolicy,
+    ...(validateAgentProfiles ? { validateAgentProfiles } : {}),
     sha256,
     clock: () => new Date(time),
     idFactory: () => ids.shift()!,
@@ -512,6 +517,7 @@ const seedDurableRun = (
       revision: 1,
       dispatchStarted: false,
       effectClass: classifyOperationEffect(step.action),
+      agentProfiles: step.agentProfiles ?? [],
       createdAt: now,
       updatedAt: now,
     })),
@@ -521,6 +527,92 @@ const seedDurableRun = (
 };
 
 describe("RuntimeEngine", () => {
+  const profiledPreview = (
+    privacyMode: "standard" | "private" = "standard",
+  ) => {
+    const source =
+      privacyMode === "standard"
+        ? makeStandardPreview()
+        : makePreview("observer", action("safe", ["read"]));
+    return {
+      ...source,
+      plan: {
+        ...source.plan,
+        steps: source.plan.steps.map((step) => ({
+          ...step,
+          agentProfiles: [
+            {
+              profileId: "agent.profile.review",
+              revision: 1,
+              digest: "7".repeat(64),
+            },
+          ],
+        })),
+      },
+    };
+  };
+
+  it("fails closed when a planned profile has no runtime catalog", async () => {
+    const preview = profiledPreview();
+    const fixture = runtimeFixture(
+      preview,
+      new FakeDispatcher({
+        outcome: "succeeded",
+        summary: "Should not dispatch",
+      }),
+    );
+    const result = await fixture.runtime.execute(preview);
+    expect(result.status).toBe("blocked");
+    expect(result.runId).toBeUndefined();
+    fixture.store.close();
+  });
+
+  it("rejects a stale profile revision before dispatch", async () => {
+    const preview = profiledPreview();
+    const fixture = runtimeFixture(
+      preview,
+      new FakeDispatcher({
+        outcome: "succeeded",
+        summary: "Should not dispatch",
+      }),
+      () => {
+        throw new Error("Agent profile binding changed");
+      },
+    );
+    const result = await fixture.runtime.execute(preview);
+    expect(result.status).toBe("blocked");
+    expect(result.reason).toMatch(/profile binding changed/u);
+    fixture.store.close();
+  });
+
+  it("preserves the validated profile reference in durable workflow state", async () => {
+    const preview = profiledPreview();
+    const fixture = runtimeFixture(
+      preview,
+      new FakeDispatcher({ outcome: "succeeded", summary: "Confirmed" }),
+      () => undefined,
+    );
+    const result = await fixture.runtime.execute(preview);
+    expect(result.status).toBe("completed");
+    expect(
+      fixture.store.listDurableWorkflowSteps(result.runId!)[0]?.agentProfiles,
+    ).toEqual(preview.plan.steps[0]?.agentProfiles);
+    fixture.store.close();
+  });
+
+  it("keeps profile references non-durable in private mode", async () => {
+    const preview = profiledPreview("private");
+    const fixture = runtimeFixture(
+      preview,
+      new FakeDispatcher({ outcome: "succeeded", summary: "Private" }),
+      () => undefined,
+    );
+    const result = await fixture.runtime.execute(preview);
+    expect(result.status).toBe("completed");
+    expect(fixture.store.findDurableWorkflow(result.runId!)).toBeUndefined();
+    fixture.store.close();
+  });
+
   it("persists a standard workflow lifecycle and confirmed evidence atomically", async () => {
     const preview = makeStandardPreview();
     const output = { durable: true };
@@ -642,6 +734,49 @@ describe("RuntimeEngine", () => {
         await restartedRuntime.execute(preview, { resumeRunId: runId }),
       ).toMatchObject({ status: "completed", runId });
       expect(dispatcher.calls).toBe(1);
+      reopened.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not substitute a stale profile after SQLite reopen and Runtime restart", async () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), "trivergence-profile-restart-"),
+    );
+    try {
+      const path = join(directory, "workflow.db");
+      const preview = profiledPreview();
+      const first = PersistenceStore.open(path, { clock: () => new Date(NOW) });
+      first.persistPreview(preview);
+      const runId = "95000000-0000-4000-8000-000000000001";
+      seedDurableRun(first, preview, runId);
+      first.close();
+      const reopened = PersistenceStore.open(path, {
+        clock: () => new Date(NOW),
+      });
+      const dispatcher = new FakeDispatcher({
+        outcome: "succeeded",
+        summary: "Must not run",
+      });
+      const restarted = new RuntimeEngine({
+        persistence: reopened,
+        dispatchers: [dispatcher],
+        revalidate: validRevalidation,
+        evaluatePolicy,
+        validateAgentProfiles: () => {
+          throw new Error("Historical profile revision unavailable");
+        },
+        sha256,
+        clock: () => new Date(NOW),
+      });
+      restarted.recoverOrphans();
+      const result = await restarted.execute(preview, { resumeRunId: runId });
+      expect(result.status).toBe("blocked");
+      expect(dispatcher.calls).toBe(0);
+      expect(
+        reopened.listDurableWorkflowSteps(runId)[0]?.agentProfiles,
+      ).toEqual(preview.plan.steps[0]?.agentProfiles);
       reopened.close();
     } finally {
       rmSync(directory, { recursive: true, force: true });

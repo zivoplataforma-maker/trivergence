@@ -195,6 +195,7 @@ const rowToWorkflowStep = (row: Record<string, unknown>): DurableWorkflowStep =>
     revision: row.revision,
     dispatchStarted: row.dispatch_started === 1,
     effectClass: row.effect_class,
+    agentProfiles: JSON.parse(String(row.agent_profiles_json)),
     ...(row.approval_id ? { approvalId: row.approval_id } : {}),
     ...(row.attempt_id ? { attemptId: row.attempt_id } : {}),
     ...(row.evidence_id ? { evidenceId: row.evidence_id } : {}),
@@ -592,8 +593,8 @@ export class PersistenceStore {
       const insertStep = this.#database.prepare(
         `INSERT INTO plan_steps(
           plan_id, step_id, position, capability_id, subsystem,
-          depends_on_json, action_json, policy_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          depends_on_json, action_json, policy_json, agent_profiles_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       preview.plan.steps.forEach((step, position) => {
         insertStep.run(
@@ -609,6 +610,7 @@ export class PersistenceStore {
               : step.action,
           ),
           JSON.stringify(step.policy),
+          JSON.stringify(step.agentProfiles ?? []),
         );
       });
 
@@ -701,13 +703,14 @@ export class PersistenceStore {
     this.#validateDurableWorkflowBinding(workflow);
     const planSteps = this.#database
       .prepare(
-        `SELECT step_id, capability_id, depends_on_json
+        `SELECT step_id, capability_id, depends_on_json, agent_profiles_json
          FROM plan_steps WHERE plan_id = ?`,
       )
       .all(workflow.workflowId) as {
       step_id: string;
       capability_id: string;
       depends_on_json: string;
+      agent_profiles_json: string;
     }[];
     if (
       planSteps.length !== steps.length ||
@@ -719,6 +722,7 @@ export class PersistenceStore {
           !step ||
           step.capabilityId !== planned.capability_id ||
           JSON.stringify(step.dependencies) !== planned.depends_on_json ||
+          JSON.stringify(step.agentProfiles) !== planned.agent_profiles_json ||
           step.planId !== workflow.workflowId ||
           step.revision !== 1 ||
           step.dispatchStarted ||
@@ -765,8 +769,8 @@ export class PersistenceStore {
           run_id, plan_id, step_id, capability_id, dependencies_json,
           lifecycle, revision, dispatch_started, effect_class, approval_id,
           attempt_id, evidence_id, output_digest, terminal_reason,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          created_at, updated_at, agent_profiles_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const step of steps) {
         insertStep.run(
@@ -786,6 +790,7 @@ export class PersistenceStore {
           step.terminalReason ?? null,
           step.createdAt,
           step.updatedAt,
+          JSON.stringify(step.agentProfiles),
         );
       }
       this.#audit.append({
@@ -832,13 +837,14 @@ export class PersistenceStore {
     }
     const planSteps = this.#database
       .prepare(
-        `SELECT step_id, capability_id, depends_on_json
+        `SELECT step_id, capability_id, depends_on_json, agent_profiles_json
          FROM plan_steps WHERE plan_id = ?`,
       )
       .all(plan.plan_id) as {
       step_id: string;
       capability_id: string;
       depends_on_json: string;
+      agent_profiles_json: string;
     }[];
     const planned = new Map(planSteps.map((step) => [step.step_id, step]));
     const durableExists = this.#database
@@ -862,6 +868,7 @@ export class PersistenceStore {
             step.planId !== plan.plan_id ||
             step.capabilityId !== source.capability_id ||
             JSON.stringify(step.dependencies) !== source.depends_on_json ||
+            JSON.stringify(step.agentProfiles) !== source.agent_profiles_json ||
             [
               "running",
               "unknown",

@@ -8,6 +8,7 @@ import {
 } from "@trivergence/contracts";
 
 import type { CapabilityRegistry } from "./capability-registry.js";
+import type { AgentProfileCatalog } from "./agent-profile-catalog.js";
 
 const normalize = (value: string) =>
   value
@@ -40,6 +41,8 @@ const closureFor = (
 };
 
 export class StrategyEngine {
+  constructor(private readonly agentProfiles?: AgentProfileCatalog) {}
+
   select(
     request: OrchestrationRequest,
     registry: CapabilityRegistry,
@@ -98,16 +101,31 @@ export class StrategyEngine {
             capability.status === "unavailable" ||
             capability.status === "disabled",
         );
+        const ineligibleProfile = capabilities.find((capability) => {
+          if (!this.agentProfiles || capability.subsystem !== "agent")
+            return false;
+          try {
+            this.agentProfiles.selectForStep(
+              capability,
+              projectContext,
+              registry,
+            );
+            return false;
+          } catch {
+            return true;
+          }
+        });
         const requiresNetwork = capabilities.some((capability) =>
           capability.action.kinds.includes("network"),
         );
         const score = explicit
           ? 10_000
           : Math.min(9_999, definition.priority + matchedTerms.length * 100);
-        if (missing.length > 0 || unavailable.length > 0) {
+        if (missing.length > 0 || unavailable.length > 0 || ineligibleProfile) {
           const unavailableIds = [
             ...missing,
             ...unavailable.map((item) => item.id),
+            ...(ineligibleProfile ? [ineligibleProfile.id] : []),
           ];
           return {
             id: definition.id,

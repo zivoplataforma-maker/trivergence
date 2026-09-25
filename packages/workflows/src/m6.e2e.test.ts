@@ -4,6 +4,7 @@ import {
   AgentTeam,
   AgentTeamDispatcher,
   createAgentCapabilities,
+  createAgentProfileCatalog,
 } from "@trivergence/agents";
 import {
   coordinationBudgetSchema,
@@ -57,8 +58,6 @@ describe("M6 vertical flow", () => {
         adapter: provider,
       },
     ]);
-    const team = new AgentTeam(host, referenceProviderCapabilityId);
-    const workflow = new WorkflowEngine(team);
     const capabilities = [
       createReferenceProviderCapability(),
       ...createMemoryCapabilities(),
@@ -66,7 +65,17 @@ describe("M6 vertical flow", () => {
       ...createWorkflowCapabilities(),
     ];
     const registry = new CapabilityRegistry("m6-e2e-1", capabilities);
-    const engine = new OrchestrationEngine(registry, randomUUID, sha256);
+    const profiles = createAgentProfileCatalog(sha256);
+    const team = new AgentTeam(host, referenceProviderCapabilityId, {
+      profiles: profiles.boundProfiles(coordinationCapabilityIds.agentTeam),
+    });
+    const workflow = new WorkflowEngine(team);
+    const engine = new OrchestrationEngine(
+      registry,
+      randomUUID,
+      sha256,
+      profiles,
+    );
     const goal = "Diseñar un plan local de verificación para el flujo M6";
     const budget = coordinationBudgetSchema.parse({});
     const preview = engine.preview({
@@ -89,6 +98,10 @@ describe("M6 vertical flow", () => {
       coordinationCapabilityIds.workflowEvaluation,
     ]);
     expect(preview.evaluation.status).toBe("approval_required");
+    const agentStep = preview.plan.steps.find(
+      (step) => step.capabilityId === coordinationCapabilityIds.agentTeam,
+    )!;
+    expect(agentStep.agentProfiles).toHaveLength(3);
     store.persistPreview(preview);
     const runtime = new RuntimeEngine({
       persistence: store,
@@ -101,6 +114,8 @@ describe("M6 vertical flow", () => {
       ],
       revalidate: (candidate) => engine.revalidate(candidate),
       evaluatePolicy,
+      validateAgentProfiles: (step, context) =>
+        engine.assertAgentProfileBinding(step, context),
       sha256,
     });
     const approvalIds: Record<string, string> = {};
@@ -113,6 +128,9 @@ describe("M6 vertical flow", () => {
     }
 
     const execution = await runtime.execute(preview, { approvalIds });
+    expect(
+      store.listDurableWorkflowSteps(execution.runId!)[1]?.agentProfiles,
+    ).toEqual(agentStep.agentProfiles);
     const finalStep = preview.plan.steps.at(-1)!;
     const output = workflowEvaluationResultSchema.parse(
       execution.outputs?.[finalStep.id],

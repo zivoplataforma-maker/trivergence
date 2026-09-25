@@ -3,34 +3,32 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   agentTeamResultSchema,
   type AgentContribution,
-  type AgentRole,
   type AgentTeamResult,
   type CoordinationBudget,
   type MemoryRecallResult,
 } from "@trivergence/coordination-contracts";
+import type {
+  AgentProfile,
+  AgentProfileReference,
+} from "@trivergence/contracts";
 import { canonicalizeJson } from "@trivergence/orchestration-engine";
 import type { AdapterHost } from "@trivergence/provider-adapters";
+import { createAgentProfileCatalog } from "./profiles.js";
 
 const sha256 = (value: string) =>
   createHash("sha256").update(value, "utf8").digest("hex");
 const bytes = (value: string) => Buffer.byteLength(value, "utf8");
 
-const roleInstructions: Readonly<Record<AgentRole, string>> = {
-  planner:
-    "Propón una solución concreta, ordenada y compatible con el objetivo.",
-  critic: "Detecta riesgos, supuestos débiles y mejoras verificables.",
-  synthesizer:
-    "Integra la propuesta y la crítica en un resultado final conciso.",
-};
-
 export interface AgentTeamOptions {
   readonly idFactory?: () => string;
   readonly clock?: () => Date;
+  readonly profiles?: readonly AgentProfile[];
 }
 
 export class AgentTeam {
   readonly #idFactory: () => string;
   readonly #clock: () => Date;
+  readonly #profiles: readonly AgentProfile[];
 
   constructor(
     private readonly providerHost: AdapterHost,
@@ -43,6 +41,24 @@ export class AgentTeam {
     }
     this.#idFactory = options.idFactory ?? randomUUID;
     this.#clock = options.clock ?? (() => new Date());
+    this.#profiles =
+      options.profiles ??
+      createAgentProfileCatalog(sha256).boundProfiles("agent.reference.team");
+  }
+
+  matchesReferences(
+    references: readonly AgentProfileReference[] | undefined,
+  ): boolean {
+    return (
+      JSON.stringify(references ?? []) ===
+      JSON.stringify(
+        this.#profiles.map((profile) => ({
+          profileId: profile.profileId,
+          revision: profile.revision,
+          digest: profile.digest,
+        })),
+      )
+    );
   }
 
   async execute(input: {
@@ -52,11 +68,8 @@ export class AgentTeam {
     readonly signal: AbortSignal;
   }): Promise<AgentTeamResult> {
     const startedAt = this.#clock().getTime();
-    const roles = (["planner", "critic", "synthesizer"] as const).slice(
-      0,
-      input.budget.maxAgents,
-    );
-    if (roles.length > input.budget.maxProviderCalls) {
+    const profiles = this.#profiles.slice(0, input.budget.maxAgents);
+    if (profiles.length > input.budget.maxProviderCalls) {
       throw new Error("Agent team exceeds provider call budget");
     }
     const memoryContext = input.memory.items.map((item) =>
@@ -67,21 +80,30 @@ export class AgentTeam {
     let totalOutputBytes = 0;
     let totalCost = 0;
 
-    for (const role of roles) {
+    for (const profile of profiles) {
+      const role = profile.responsibility;
       if (input.signal.aborted) throw new Error("Agent team cancelled");
       const elapsed = this.#clock().getTime() - startedAt;
-      const remainingMs = input.budget.timeoutMs - elapsed;
+      const remainingMs = Math.min(
+        input.budget.timeoutMs - elapsed,
+        profile.budget.timeoutMs,
+      );
       if (remainingMs < 10)
         throw new Error("Agent team timeout budget reached");
       const prior = contributions.map(
         (item) => `${item.role}: ${item.response.slice(0, 1_024)}`,
       );
       const context = [...memoryContext, ...prior];
-      const prompt = `${role.toUpperCase()}: ${roleInstructions[role]} Objetivo: ${input.goal}`;
-      const remainingInputBytes = input.budget.maxInputBytes - totalInputBytes;
-      const remainingOutputBytes =
-        input.budget.maxOutputBytes - totalOutputBytes;
-      const remainingCalls = roles.length - contributions.length;
+      const prompt = `${role.toUpperCase()}: ${profile.guidance} Objetivo: ${input.goal}`;
+      const remainingInputBytes = Math.min(
+        input.budget.maxInputBytes - totalInputBytes,
+        profile.budget.maxInputBytes,
+      );
+      const remainingOutputBytes = Math.min(
+        input.budget.maxOutputBytes - totalOutputBytes,
+        profile.budget.maxOutputBytes,
+      );
+      const remainingCalls = profiles.length - contributions.length;
       if (remainingInputBytes < 1 || remainingOutputBytes < 256) {
         throw new Error("Agent team aggregate byte budget exhausted");
       }
@@ -98,7 +120,10 @@ export class AgentTeam {
           ),
           maxChunks: 128,
           timeoutMs: Math.max(10, remainingMs),
-          maxCostMicrounits: input.budget.maxCostMicrounits,
+          maxCostMicrounits: Math.min(
+            input.budget.maxCostMicrounits - totalCost,
+            profile.budget.maxCostMicrounits,
+          ),
           scenario: "normal",
         },
       );
@@ -125,6 +150,11 @@ export class AgentTeam {
       }
       contributions.push({
         role,
+        profile: {
+          profileId: profile.profileId,
+          revision: profile.revision,
+          digest: profile.digest,
+        },
         response: result.response,
         responseDigest: sha256(result.response),
         requestDigest: result.provenance.requestDigest,
@@ -173,9 +203,20 @@ export class AgentTeam {
     readonly candidate: string;
     readonly budget: CoordinationBudget;
     readonly signal: AbortSignal;
+    readonly profile: AgentProfileReference;
   }): Promise<AgentContribution> {
     if (input.signal.aborted) throw new Error("Agent replan cancelled");
     const startedAt = this.#clock().getTime();
+    const profile = this.#profiles.find(
+      (item) => item.responsibility === "synthesizer",
+    );
+    if (
+      !profile ||
+      profile.budget.maxExecutions < 2 ||
+      !this.matchesProfile(profile, input.profile)
+    ) {
+      throw new Error("Synthesis profile is unavailable for repair");
+    }
     const prepared = this.providerHost.prepare(
       this.capabilityId,
       this.#idFactory(),
@@ -186,11 +227,20 @@ export class AgentTeam {
             2_048,
           ),
         context: [input.candidate.slice(0, 2_048)],
-        maxInputBytes: input.budget.maxInputBytes,
-        maxOutputBytes: input.budget.maxOutputBytes,
+        maxInputBytes: Math.min(
+          input.budget.maxInputBytes,
+          profile.budget.maxInputBytes,
+        ),
+        maxOutputBytes: Math.min(
+          input.budget.maxOutputBytes,
+          profile.budget.maxOutputBytes,
+        ),
         maxChunks: 128,
-        timeoutMs: input.budget.timeoutMs,
-        maxCostMicrounits: input.budget.maxCostMicrounits,
+        timeoutMs: Math.min(input.budget.timeoutMs, profile.budget.timeoutMs),
+        maxCostMicrounits: Math.min(
+          input.budget.maxCostMicrounits,
+          profile.budget.maxCostMicrounits,
+        ),
         scenario: "normal",
       },
     );
@@ -210,7 +260,12 @@ export class AgentTeam {
       throw new Error("Agent replan timeout budget exceeded");
     }
     return {
-      role: "synthesizer",
+      role: profile.responsibility,
+      profile: {
+        profileId: profile.profileId,
+        revision: profile.revision,
+        digest: profile.digest,
+      },
       response: result.response,
       responseDigest: sha256(result.response),
       requestDigest: result.provenance.requestDigest,
@@ -222,5 +277,16 @@ export class AgentTeam {
       providerId: "reference",
       localOnly: true,
     };
+  }
+
+  private matchesProfile(
+    profile: AgentProfile,
+    reference: AgentProfileReference,
+  ): boolean {
+    return (
+      profile.profileId === reference.profileId &&
+      profile.revision === reference.revision &&
+      profile.digest === reference.digest
+    );
   }
 }

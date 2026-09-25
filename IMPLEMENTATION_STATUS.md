@@ -1,6 +1,6 @@
 # Estado de implementación
 
-Última actualización: 2026-09-24
+Última actualización: 2026-09-25
 
 Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 `PLANNED` no iniciado, `BLOCKED` requiere una decisión o dependencia externa.
@@ -20,11 +20,33 @@ Leyenda: `DONE` verificado, `PARTIAL` existe pero no cumple toda la aceptación,
 | P3-A1 — Project Context mínimo      | DONE    | Snapshot v1 determinista, builder, persistencia privada/estándar, Strategy, threat model y tests verificados.      |
 | P3-D0 — Execution Gateway contract  | DONE    | Contrato v1, backend local supervisado, Policy/Approval/Context bindings, límites y tests verificados.             |
 | P3-E1 — Durable Workflow State      | DONE    | Estado/steps SQLite, restart conservador, budgets/approvals y resume seguro verificados.                           |
-| P3 — evolución arquitectónica       | PARTIAL | P3-A1, P3-D0 y P3-E1 completos; P3-B1 y fases posteriores no comenzaron.                                           |
+| P3-B1 — Agent Profiles              | DONE    | Perfiles v1 declarativos, selección/validación, refs durables, provenance y regresiones verificadas.               |
+| P3 — evolución arquitectónica       | PARTIAL | P3-A1, P3-D0, P3-E1 y P3-B1 completos; P3-B2 y fases posteriores no comenzaron.                                    |
+
+## P3-B1 — Agent Profiles (2026-09-25)
+
+Estado: `DONE`. P3-B2 no comenzó.
+
+- El catálogo v1 convierte los roles M6 existentes en perfiles declarativos
+  `planning`, `critique` y `synthesis`; ninguno contiene provider ID, modelo,
+  backend, credencial o permiso. Reference Provider sigue siendo el único
+  ejecutable por el gate M6 existente, no por definición de perfil.
+- Cada perfil tiene identidad, revisión y digest canónico; Strategy comprueba
+  elegibilidad de capabilities reales y Planner fija las referencias al step.
+  Runtime valida contra el catálogo exacto y nunca sustituye por `latest`.
+- Migration `0010_agent_profile_references` conserva refs ID/revisión/digest en
+  plan y durable workflow, con comparación fail-closed tras restart. No se creó
+  store de perfiles ni se duplicó Capability Registry o Project Context.
+- Los límites medibles de input/output/tiempo/coste restringen el budget global.
+  Policy/Approval siguen siendo autoridad; perfiles y guidance no la amplían.
+  Private mode no crea workflow durable.
+- Evidencia y límites:
+  [`docs/product/p3-b1-agent-profiles-report.md`](docs/product/p3-b1-agent-profiles-report.md).
+  M5 y M7 siguen `PARTIAL`; no se habilitó provider externo.
 
 ## P3-E1 — Durable Workflow State (2026-09-24)
 
-Estado: `DONE`. P3-B1 no comenzó.
+Estado: `DONE`. Esta base durable permanece vigente y P3-B1 ya está `DONE`.
 
 - migration `0009_durable_workflow_state` agrega ejecuciones y steps
   normalizados con lifecycle/revisión, dependencias y referencias a
@@ -350,7 +372,8 @@ sistemas usados durante la investigación:
 - `DONE` P3-D0: contrato de Execution Gateway sobre ejecución supervisada;
 - `DONE` P3-E1: estado durable de workflows, restart conservador y resume
   acotado; snapshots confirmados siguen pendientes;
-- `PLANNED` P3-B1: perfiles declarativos por capabilities, permisos y budgets;
+- `DONE` P3-B1: perfiles declarativos por capabilities, contexto y budgets
+  restrictivos, sin autoridad propia;
 - `PLANNED` P3-B2: fan-out/fan-in con concurrencia, cancelación, budget
   agregado, evaluación y provenance;
 - `PLANNED` P3-C: Tool Gateway mediante MCP bajo Registry → Policy → Approval →

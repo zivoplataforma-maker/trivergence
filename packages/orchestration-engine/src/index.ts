@@ -1,4 +1,5 @@
 export { CapabilityRegistry } from "./capability-registry.js";
+export { AgentProfileCatalog } from "./agent-profile-catalog.js";
 export { canonicalizeJson } from "./canonical-json.js";
 export { EvaluationEngine } from "./evaluation-engine.js";
 export { ExecutionPlanner, type IdFactory } from "./execution-planner.js";

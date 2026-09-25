@@ -234,10 +234,16 @@ Detecta deriva, aporta evidencia y propone un cambio.
 Embeddings y grafo de conocimiento son implementaciones posibles, no requisitos
 del core. Deben justificar coste, privacidad y complejidad.
 
-### 7. Agent Runtime y perfiles por capacidades — `NEXT/PLANNED`
+### 7. Agent Runtime y perfiles por capacidades — `CURRENT/CORE` mínimo + `NEXT/PLANNED`
 
 Los agentes se definen por **capabilities, permisos, budgets y
 responsabilidades**, no por personajes decorativos.
+
+P3-B1 implementa el mínimo declarativo: tres perfiles M6 versionados, sin
+provider/modelo/backend en su definición, seleccionados contra capabilities
+observadas y referenciados por ID/revisión/digest en plan y workflow durable.
+Policy/Approval siguen siendo autoridad y los perfiles solo restringen budgets.
+No hay worker autónomo, selección integral de providers ni paralelismo.
 
 Un perfil puede declarar:
 

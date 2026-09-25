@@ -147,3 +147,35 @@ network enforcement reales requieren un backend futuro distinto.
 - **SQLite corrupto:** constraints, foreign keys, bindings y la apertura segura
   hacen fallar cerrado inconsistencias detectables. La manipulación host-level
   fuera de esas garantías sigue siendo riesgo residual.
+
+## Agent Profiles (P3-B1)
+
+- **perfil malicioso o metadata no confiable:** schema estricto, texto de
+  `guidance` acotado y tratado como orientación de trabajo, nunca como Policy,
+  Approval, instrucciones del sistema o permiso de tools;
+- **tampering, revisión stale o sustitución:** identidad/revisión/digest
+  canónico forman parte del plan íntegro y se conservan en SQLite; Runtime
+  revalida el catálogo exacto antes de dispatch. Si la versión histórica no
+  está, bloquea;
+- **escalada de capability o provider encubierto:** el perfil expresa requisitos
+  abstractos y el Registry conserva disponibilidad real. El schema rechaza
+  `providerId`, credenciales y campos de autoridad; el gate M6 del equipo sigue
+  limitando la ejecución al Reference Provider local;
+- **escalada de Policy/Approval:** elegibilidad técnica no concede permiso;
+  Runtime revalida Policy y consume la approval de un uso. Constraints del
+  perfil pueden reducir, no ampliar, los action kinds permitidos;
+- **budget reset o ampliación:** los límites de perfil se intersectan con el
+  budget global medible. Runtime conserva su ledger durable tras restart; una
+  reparación exige la referencia exacta del perfil de síntesis;
+- **cruce de workspace/contexto:** el catálogo exige el Project Context
+  autorizado y el plan lo liga a workspace, Registry y digest; no copia
+  objetivos, recursos, Memory ni Evidence al perfil;
+- **private mode:** solo ID/revisión/digest de configuración aparecen en el plan
+  redacted existente; no se crea workflow durable ni se persisten prompts por
+  causa del perfil.
+
+Riesgo residual: SHA-256 no es firma ni protección frente a un atacante con
+control completo del proceso local. La configuración inicial se distribuye con
+la aplicación; perfiles dinámicos descargados o editables no forman parte de
+P3-B1. El output del Reference Provider puede seguir conteniendo instrucciones
+maliciosas, pero no modifica Registry, Policy, Approval o el plan.

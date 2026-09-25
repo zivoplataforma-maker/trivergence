@@ -36,8 +36,9 @@ Resultado + cinco StepEvidence + auditoría encadenada
 - `@trivergence/coordination-contracts`: contratos Zod propios de M6. Evita
   acoplar los contratos estables del núcleo a detalles internos.
 - `@trivergence/agents`: ejecuta los roles acotados `planner`, `critic` y
-  `synthesizer`. Solo acepta un adapter cuyo manifest sea `reference` y
-  `localOnly=true`.
+  `synthesizer`, ahora declarados como perfiles v1 (P3-B1). El equipo M6 solo
+  acepta un adapter cuyo manifest sea `reference` y `localOnly=true`; esta
+  restricción de gate pertenece al equipo, no a los perfiles.
 - `@trivergence/workflows`: ejecuta la definición declarativa y versionada
   `workflow.local.team-memory-evaluation@1.0.0`, evalúa checks deterministas y
   admite como máximo una reparación.
@@ -52,6 +53,14 @@ Resultado + cinco StepEvidence + auditoría encadenada
 Los cuatro componentes del Orchestration Engine no fueron modificados para M6.
 El Planner expandió las cinco capacidades usando el mecanismo existente de
 dependencias.
+
+P3-B1 evoluciona este flujo sin crear otro sistema de agentes: el catálogo
+declarativo describe responsabilidades, requisitos abstractos de capability,
+contexto y budgets restrictivos. Strategy filtra perfiles inelegibles; Planner
+fija ID/revisión/digest en el step; Runtime los revalida y SQLite conserva esas
+referencias en el plan y el workflow durable. El equipo sigue secuencial. Una
+contribución incluye la referencia del perfil que la produjo. Un perfil no es
+provider, modelo, permiso, proceso worker ni fuente de autoridad.
 
 ## Contratos y cambios compatibles
 

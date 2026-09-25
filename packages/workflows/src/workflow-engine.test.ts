@@ -17,8 +17,14 @@ const sha256 = (value: string) =>
 describe("WorkflowEngine", () => {
   it("uses at most one replan when deterministic checks fail", async () => {
     const goal = "Reparar resultado";
+    const profile = {
+      profileId: "agent.profile.synthesis",
+      revision: 1,
+      digest: digest("a"),
+    };
     const repair = vi.fn().mockResolvedValue({
       role: "synthesizer",
+      profile,
       response: "Resultado reparado con suficiente detalle para ser aceptado.",
       responseDigest: sha256(
         "Resultado reparado con suficiente detalle para ser aceptado.",
@@ -41,7 +47,8 @@ describe("WorkflowEngine", () => {
       goalDigest: sha256(goal),
       contributions: [
         {
-          role: "planner",
+          role: "synthesizer",
+          profile,
           response: "breve",
           responseDigest: sha256("breve"),
           requestDigest: digest("2"),
