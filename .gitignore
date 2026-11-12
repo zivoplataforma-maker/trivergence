@@ -19,7 +19,6 @@ graphify-out/
 .claude/
 .vscode/
 .idea/
-/AGENTS.md
 /.graphifyignore
 
 # Local databases, profiles, credentials and signing material
@@ -45,3 +44,11 @@ provider-preferences.json.*.tmp
 *.tsbuildinfo
 Thumbs.db
 .DS_Store
+
+# Additional local secrets and signing material
+.aws/
+.ssh/
+*.ppk
+*.keystore
+*.kdbx
+secrets.json

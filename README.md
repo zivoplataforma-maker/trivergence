@@ -345,3 +345,10 @@ assumptions and help us build Trivergence.**
 [Read the roadmap](ROADMAP.md) · [Start contributing](CONTRIBUTING.md)
 
 </div>
+
+## Maintainer documentation
+
+- [Current status](docs/ESTADO_ACTUAL.md) and [changelog](CHANGELOG.md)
+- [Build and packaging](docs/DESPLIEGUE.md) and [testing](docs/TESTING.md)
+- [Codex Cloud handoff](docs/CONTINUIDAD_CODEX.md) and
+  [repository instructions](AGENTS.md)
